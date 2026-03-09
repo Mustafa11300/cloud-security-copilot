@@ -1,7 +1,5 @@
 # 🛡️ CloudGuard — GenAI-Powered Cloud Security Copilot
 
-> **Built for the [Elasticsearch Agent Builder Hackathon](https://hackathon.elastic.co) & [Amazon Nova AI Hackathon](https://amazonova.devpost.com) — 2026**
-
 ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.110-009688?style=for-the-badge&logo=fastapi&logoColor=white)
 ![Elasticsearch](https://img.shields.io/badge/Elasticsearch-8.x-005571?style=for-the-badge&logo=elasticsearch&logoColor=white)
