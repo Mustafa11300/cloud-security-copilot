@@ -501,10 +501,3 @@ MIT License — see [LICENSE](LICENSE) for details.
 
 ---
 
-<div align="center">
-
-**Built with ❤️ for the Elasticsearch Agent Builder Hackathon & Amazon Nova AI Hackathon — 2026**
-
-[🔗 Elasticsearch Hackathon](https://hackathon.elastic.co) • [🔗 Amazon Nova Hackathon](https://amazonova.devpost.com)
-
-</div>
