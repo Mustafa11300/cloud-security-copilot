@@ -32,7 +32,7 @@ app = FastAPI(
 # Allow React frontend to call this API (CORS = Cross-Origin Resource Sharing)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*","https://cloudgaurd.vercel.app"],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
