@@ -54,43 +54,49 @@ def get_trend(days: int = 7):
 @router.post("/scan")
 async def run_scan():
     """
-    Triggers a full scan — generates new data, runs rules, indexes findings,
-    saves snapshot. This is what the Run Scan button calls.
+    Fast scan — re-runs rules on EXISTING indexed resources.
+    No data generation, no full re-index. Just rules + snapshot.
+    Takes ~2-3 seconds instead of 15-20 seconds.
     """
     try:
-        import sys, os
-        sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-
-        from data.generator import generate_full_dataset
+        from elastic.client import es
         from engine.rules import scan_all_resources
         from engine.scorer import generate_posture_report
-        from elastic.indexer import index_resources, index_findings, index_scan_snapshot
+        from elastic.indexer import index_findings, index_scan_snapshot
 
-        print("🔄 Scan triggered from frontend...")
+        print("⚡ Fast scan triggered...")
 
-        # Generate fresh data
-        resources = generate_full_dataset()
+        # Step 1: Fetch existing resources from ES (no generation)
+        result = es.search(
+            index="cloud-resources",
+            body={"query": {"match_all": {}}, "size": 500}
+        )
+        resources = [h["_source"] for h in result["hits"]["hits"]]
+        print(f"   Loaded {len(resources)} existing resources")
 
-        # Run rules
+        # Step 2: Run rules on existing resources
         findings_result = scan_all_resources(resources)
 
-        # Index everything
-        index_resources(resources)
+        # Step 3: Clear old findings and index new ones
+        es.delete_by_query(
+            index="security-findings",
+            body={"query": {"match_all": {}}}
+        )
         index_findings(findings_result["all_findings"])
 
-        # Save snapshot
+        # Step 4: Save new snapshot (for trend chart)
         report = generate_posture_report(resources, findings_result)
         index_scan_snapshot(report)
 
-        print("✅ Scan complete!")
+        print("✅ Fast scan complete!")
 
         return {
-            "status":          "success",
-            "message":         "Scan completed successfully",
-            "security_score":  report["security"]["security_score"],
-            "total_findings":  report["finding_count"],
-            "monthly_waste":   report["cost"]["total_monthly_waste_usd"],
-            "scanned_at":      report["generated_at"],
+            "status":         "success",
+            "message":        "Scan completed",
+            "security_score": report["security"]["security_score"],
+            "total_findings": report["finding_count"],
+            "monthly_waste":  report["cost"]["total_monthly_waste_usd"],
+            "scanned_at":     report["generated_at"],
         }
 
     except Exception as e:
