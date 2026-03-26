@@ -44,11 +44,11 @@ def calculate_security_score(findings: dict) -> dict:
     n_medium = len(by_severity.get("MEDIUM", []))
     n_low = len(by_severity.get("LOW", []))
 
-    # Penalty calculation — each severity level costs points
-    critical_penalty = n_critical * 20
-    high_penalty = n_high * 10
-    medium_penalty = n_medium * 5
-    low_penalty = n_low * 2
+    critical_penalty = min(n_critical * 4, 25)   # max 25pts from critical
+    high_penalty     = min(n_high * 2, 20)        # max 20pts from high  
+    medium_penalty   = min(n_medium * 1, 15)      # max 15pts from medium
+    low_penalty      = min(n_low * 1, 10)         # max 10pts from low
+    # max total penalty = 70 → minimum score = 30
 
     total_penalty = critical_penalty + high_penalty + medium_penalty + low_penalty
 
