@@ -498,4 +498,4 @@ curl -X POST http://localhost:8000/api/chat/ \
 MIT License — see [LICENSE](LICENSE) for details.
 
 ---
-
+[🔗 Frontend Repository](https://github.com/Mustafa11300/CloudGaurd-F)
