@@ -1,7 +1,7 @@
 """
 GOVERNANCE & ROI MATH ENGINE
 ==============================
-Subsystem 5 — Phase 1 Foundation (v2: Fuzzy Logic)
+Subsystem 5 — Phase 1 Foundation
 
 Implements the complete mathematical framework for CloudGuard-B:
 
@@ -19,19 +19,11 @@ Implements the complete mathematical framework for CloudGuard-B:
    - CRITIC (Criteria Importance Through Intercriteria Correlation)
    Both use NetworkX dependency graph centrality.
 
-4. Fuzzy Logic (NEW):
-   - Trapezoidal Membership Functions for Low/Med/High/Critical
-   - Defuzzification via Center of Gravity (CoG)
-   - Reduces false-positive sensitivity (Zadeh, 1965)
-   - Maps raw risk scores → fuzzy linguistic variables
-
 Academic References:
   - Multi-Objective Optimization: Deb et al. (2002) NSGA-II
   - EWM: Shannon Entropy Weighting (Shannon, 1948)
   - CRITIC: Diakoulaki et al. (1995)
   - ROSI: Gordon & Loeb (2002) — Economics of Information Security
-  - Fuzzy Logic: Zadeh (1965) — Fuzzy Sets
-  - Trapezoidal MF: Pedrycz & Gomide (2007)
 """
 
 from __future__ import annotations
@@ -106,298 +98,6 @@ class CRITICResult:
     information_content: dict[str, float]
 
 
-@dataclass
-class FuzzyMembership:
-    """
-    Membership degrees for all fuzzy risk categories.
-    Each value ∈ [0, 1] represents the degree of membership.
-    """
-    low: float = 0.0
-    medium: float = 0.0
-    high: float = 0.0
-    critical: float = 0.0
-
-    @property
-    def dominant_category(self) -> str:
-        """Return the category with highest membership degree."""
-        categories = {
-            "low": self.low,
-            "medium": self.medium,
-            "high": self.high,
-            "critical": self.critical,
-        }
-        return max(categories, key=categories.get)
-
-    @property
-    def is_ambiguous(self) -> bool:
-        """
-        Check if the classification is ambiguous (multiple categories
-        with membership > 0.3). Ambiguous scores are where false
-        positives typically arise.
-        """
-        memberships = [self.low, self.medium, self.high, self.critical]
-        significant = sum(1 for m in memberships if m > 0.3)
-        return significant >= 2
-
-    def to_dict(self) -> dict[str, float]:
-        return {
-            "low": round(self.low, 4),
-            "medium": round(self.medium, 4),
-            "high": round(self.high, 4),
-            "critical": round(self.critical, 4),
-            "dominant": self.dominant_category,
-            "is_ambiguous": self.is_ambiguous,
-        }
-
-
-@dataclass
-class FuzzyClassificationResult:
-    """Result of fuzzy risk classification across multiple resources."""
-    memberships: dict[str, FuzzyMembership]  # resource_id → membership
-    category_counts: dict[str, int]          # category → count
-    ambiguous_count: int                     # number of ambiguous classifications
-    defuzzified_scores: dict[str, float]     # resource_id → defuzzified score
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# TRAPEZOIDAL MEMBERSHIP FUNCTIONS
-# ═══════════════════════════════════════════════════════════════════════════════
-
-class TrapezoidalMF:
-    """
-    Trapezoidal Membership Function (Zadeh, 1965; Pedrycz & Gomide, 2007).
-
-    A trapezoidal function is defined by four points (a, b, c, d):
-
-                    ┌──────────┐
-              1.0 ──┤          ├──
-                   /│          │\\
-                  / │          │ \\
-                 /  │          │  \\
-              0 ────┼──────────┼────
-                 a  b          c  d
-
-    - [a, b]: Rising edge (0→1)
-    - [b, c]: Plateau (1.0)
-    - [c, d]: Falling edge (1→0)
-
-    Usage:
-        mf = TrapezoidalMF(a=0, b=0, c=20, d=35)
-        degree = mf.evaluate(15)  # → degree of membership
-    """
-
-    def __init__(self, a: float, b: float, c: float, d: float) -> None:
-        """
-        Initialize a trapezoidal membership function.
-
-        Args:
-            a: Left foot (start of rising edge)
-            b: Left shoulder (start of plateau)
-            c: Right shoulder (end of plateau)
-            d: Right foot (end of falling edge)
-        """
-        if not (a <= b <= c <= d):
-            raise ValueError(f"Parameters must satisfy a≤b≤c≤d, got {a},{b},{c},{d}")
-        self.a = a
-        self.b = b
-        self.c = c
-        self.d = d
-
-    def evaluate(self, x: float) -> float:
-        """
-        Compute the membership degree for a given value x.
-
-        Returns:
-            μ(x) ∈ [0, 1]
-        """
-        if x <= self.a or x >= self.d:
-            return 0.0
-        elif self.a < x < self.b:
-            # Rising edge
-            return (x - self.a) / (self.b - self.a) if self.b > self.a else 1.0
-        elif self.b <= x <= self.c:
-            # Plateau
-            return 1.0
-        elif self.c < x < self.d:
-            # Falling edge
-            return (self.d - x) / (self.d - self.c) if self.d > self.c else 1.0
-        return 0.0
-
-    def evaluate_array(self, x: np.ndarray) -> np.ndarray:
-        """Vectorized evaluation for a NumPy array of values."""
-        return np.vectorize(self.evaluate)(x)
-
-    def __repr__(self) -> str:
-        return f"TrapezoidalMF(a={self.a}, b={self.b}, c={self.c}, d={self.d})"
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# FUZZY RISK ENGINE
-# ═══════════════════════════════════════════════════════════════════════════════
-
-class FuzzyRiskEngine:
-    """
-    Fuzzy Logic Engine for risk classification.
-
-    Maps raw risk scores (0–100) to fuzzy categories using
-    Trapezoidal Membership Functions. This reduces false-positive
-    sensitivity by acknowledging that risk thresholds are inherently
-    imprecise — a score of 49 and 51 should not receive drastically
-    different treatment.
-
-    Default membership functions (calibrated for cloud security):
-
-        LOW:      ╔═══════╗
-                 ─╢  0-20 ╟──────35──
-                  ╚═══════╝
-
-        MEDIUM:        ╔════════╗
-                 ──20──╢ 30-55  ╟──70──
-                       ╚════════╝
-
-        HIGH:                ╔════════╗
-                       ──50──╢ 65-80  ╟──90──
-                             ╚════════╝
-
-        CRITICAL:                  ╔═══════╗
-                             ──75──╢ 85-100╟─
-                                   ╚═══════╝
-
-    Usage:
-        engine = FuzzyRiskEngine()
-        membership = engine.classify(risk_score=55.0)
-        # → FuzzyMembership(low=0.0, medium=0.67, high=0.33, critical=0.0)
-
-        defuzzified = engine.defuzzify(membership)
-        # → 52.3 (Center of Gravity)
-    """
-
-    def __init__(
-        self,
-        low_params: tuple[float, float, float, float] = (0, 0, 20, 35),
-        medium_params: tuple[float, float, float, float] = (20, 30, 55, 70),
-        high_params: tuple[float, float, float, float] = (50, 65, 80, 90),
-        critical_params: tuple[float, float, float, float] = (75, 85, 100, 100),
-    ) -> None:
-        """
-        Initialize with Trapezoidal MF parameters for each category.
-
-        Args:
-            low_params: (a, b, c, d) for "Low" risk
-            medium_params: (a, b, c, d) for "Medium" risk
-            high_params: (a, b, c, d) for "High" risk
-            critical_params: (a, b, c, d) for "Critical" risk
-        """
-        self.mf_low = TrapezoidalMF(*low_params)
-        self.mf_medium = TrapezoidalMF(*medium_params)
-        self.mf_high = TrapezoidalMF(*high_params)
-        self.mf_critical = TrapezoidalMF(*critical_params)
-
-        # Store params for serialization
-        self._params = {
-            "low": low_params,
-            "medium": medium_params,
-            "high": high_params,
-            "critical": critical_params,
-        }
-
-    def classify(self, risk_score: float) -> FuzzyMembership:
-        """
-        Classify a raw risk score into fuzzy membership degrees.
-
-        Args:
-            risk_score: Raw risk score ∈ [0, 100]
-
-        Returns:
-            FuzzyMembership with degrees for all categories.
-        """
-        return FuzzyMembership(
-            low=self.mf_low.evaluate(risk_score),
-            medium=self.mf_medium.evaluate(risk_score),
-            high=self.mf_high.evaluate(risk_score),
-            critical=self.mf_critical.evaluate(risk_score),
-        )
-
-    def classify_batch(
-        self,
-        resource_ids: list[str],
-        risk_scores: list[float],
-    ) -> FuzzyClassificationResult:
-        """
-        Classify multiple resources and return aggregate statistics.
-
-        Args:
-            resource_ids: List of resource IDs.
-            risk_scores: Corresponding risk scores.
-
-        Returns:
-            FuzzyClassificationResult with per-resource memberships
-            and aggregate counts.
-        """
-        memberships: dict[str, FuzzyMembership] = {}
-        defuzzified: dict[str, float] = {}
-        counts: dict[str, int] = {"low": 0, "medium": 0, "high": 0, "critical": 0}
-        ambiguous = 0
-
-        for rid, score in zip(resource_ids, risk_scores):
-            m = self.classify(score)
-            memberships[rid] = m
-            defuzzified[rid] = round(self.defuzzify(m), 4)
-            counts[m.dominant_category] += 1
-            if m.is_ambiguous:
-                ambiguous += 1
-
-        return FuzzyClassificationResult(
-            memberships=memberships,
-            category_counts=counts,
-            ambiguous_count=ambiguous,
-            defuzzified_scores=defuzzified,
-        )
-
-    def defuzzify(self, membership: FuzzyMembership) -> float:
-        """
-        Defuzzification via Center of Gravity (CoG) method.
-
-        CoG = Σ(μᵢ × cᵢ) / Σ(μᵢ)
-
-        Where cᵢ is the centroid of each membership function and
-        μᵢ is the membership degree.
-
-        This converts fuzzy memberships back to a crisp risk score,
-        but one that is "smoothed" by the fuzzy classification,
-        reducing abrupt threshold effects.
-
-        Returns:
-            Defuzzified risk score ∈ [0, 100]
-        """
-        # Centroids of each trapezoidal MF
-        centroids = {
-            "low": (self.mf_low.a + self.mf_low.b + self.mf_low.c + self.mf_low.d) / 4.0,
-            "medium": (self.mf_medium.a + self.mf_medium.b + self.mf_medium.c + self.mf_medium.d) / 4.0,
-            "high": (self.mf_high.a + self.mf_high.b + self.mf_high.c + self.mf_high.d) / 4.0,
-            "critical": (self.mf_critical.a + self.mf_critical.b + self.mf_critical.c + self.mf_critical.d) / 4.0,
-        }
-
-        mu_values = {
-            "low": membership.low,
-            "medium": membership.medium,
-            "high": membership.high,
-            "critical": membership.critical,
-        }
-
-        numerator = sum(mu * centroids[cat] for cat, mu in mu_values.items())
-        denominator = sum(mu_values.values())
-
-        if denominator == 0:
-            return 0.0
-
-        return numerator / denominator
-
-    def get_params(self) -> dict[str, tuple]:
-        """Get the trapezoidal MF parameters for serialization."""
-        return self._params.copy()
-
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # MATH ENGINE
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -406,8 +106,8 @@ class MathEngine:
     """
     Core mathematical engine for CloudGuard-B governance optimization.
 
-    Implements multi-objective optimization, economic analysis,
-    dynamic risk weighting, and fuzzy logic classification.
+    Implements multi-objective optimization, economic analysis, and
+    dynamic risk weighting using entropy-based methods.
 
     Usage:
         engine = MathEngine()
@@ -422,16 +122,11 @@ class MathEngine:
 
         # Dynamic weighting via EWM
         weights = engine.calculate_ewm(criteria_matrix, criterion_names)
-
-        # Fuzzy risk classification
-        membership = engine.fuzzy.classify(risk_score=55.0)
-        defuzzified = engine.fuzzy.defuzzify(membership)
     """
 
     def __init__(self) -> None:
-        """Initialize the MathEngine with dependency graph and fuzzy engine."""
+        """Initialize the MathEngine with optional NetworkX graph."""
         self._dependency_graph: Optional[nx.DiGraph] = None if not HAS_NETWORKX else nx.DiGraph()
-        self.fuzzy = FuzzyRiskEngine()
 
     # ─── 1. Equilibrium Function J ────────────────────────────────────────────
 
@@ -492,9 +187,6 @@ class MathEngine:
             j_i = w_risk * r_norm + w_cost * c_norm
             j_components.append(j_i)
 
-            # Also classify via fuzzy logic
-            fuzzy_m = self.fuzzy.classify(res.risk_score)
-
             per_resource.append({
                 "resource_id": res.resource_id,
                 "risk_raw": res.risk_score,
@@ -503,8 +195,6 @@ class MathEngine:
                 "cost_norm": round(c_norm, 4),
                 "j_contribution": round(j_i, 4),
                 "centrality": round(res.centrality, 4),
-                "fuzzy_category": fuzzy_m.dominant_category,
-                "fuzzy_ambiguous": fuzzy_m.is_ambiguous,
             })
 
         # J = mean of all per-resource contributions (normalized to [0, 1])
