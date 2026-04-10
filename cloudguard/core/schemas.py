@@ -121,6 +121,10 @@ class UniversalResource(BaseModel):
         default="us-east-1",
         description="Deployment region (AWS region or Azure location)"
     )
+    account_id: str = Field(
+        default="",
+        description="Cloud account/subscription ID owning this resource"
+    )
     name: str = Field(
         default="",
         description="Human-readable name or tag"
@@ -133,7 +137,11 @@ class UniversalResource(BaseModel):
     )
     tags: dict[str, str] = Field(
         default_factory=dict,
-        description="Resource tags for governance and cost allocation"
+        description="Resource tags for business context (e.g. DataClass, Environment)"
+    )
+    metadata: dict[str, Any] = Field(
+        default_factory=lambda: {"EWM_Weight": 0.0, "CRITIC_Index": 0.0},
+        description="Stores EWM_Weight and CRITIC_Index for governance weighting"
     )
     is_compliant: bool = Field(
         default=True,
@@ -219,6 +227,32 @@ class UniversalResource(BaseModel):
     def to_simulation_dict(self) -> dict[str, Any]:
         """Serialize for Redis pub/sub and PostgreSQL storage."""
         return self.model_dump(mode="json")
+
+    def to_v1_dict(self) -> dict[str, Any]:
+        """
+        Convert to v1-compatible flat dictionary format used by
+        the original engine/rules.py and engine/scorer.py.
+        Merges top-level fields with properties so v1 rule functions
+        can access all attributes uniformly.
+        """
+        base = {
+            "resource_id": self.resource_id,
+            "resource_type": self.resource_type.value,
+            "provider": self.provider.value,
+            "region": self.region,
+            "account_id": self.account_id,
+            "name": self.name,
+            "is_compliant": self.is_compliant,
+            "risk_score": self.risk_score,
+            "monthly_cost_usd": self.monthly_cost_usd,
+            "cpu_utilization": self.cpu_utilization,
+            "memory_utilization": self.memory_utilization,
+            "tags": self.tags,
+            "metadata": self.metadata,
+        }
+        # Merge provider-specific properties into the flat dict
+        base.update(self.properties)
+        return base
 
 
 class DriftEvent(BaseModel):
@@ -385,6 +419,208 @@ class OIDCTrustLink(BaseModel):
         if self.source_provider == self.target_provider:
             return True  # Same-cloud trust is simpler
         return bool(self.oidc_issuer_url)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SPECIALIZED RESOURCE SUBCLASSES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class ComputeResource(UniversalResource):
+    """
+    Specialized schema for compute resources (EC2, Azure VMs, EKS Pods).
+    Enforces compute-specific property validation.
+    """
+
+    @field_validator("resource_type")
+    @classmethod
+    def must_be_compute(cls, v: ResourceType) -> ResourceType:
+        compute_types = {
+            ResourceType.EC2, ResourceType.AZURE_VM,
+            ResourceType.EKS_POD, ResourceType.EKS_CLUSTER,
+            ResourceType.AZURE_AKS, ResourceType.LAMBDA,
+        }
+        if v not in compute_types:
+            raise ValueError(
+                f"ComputeResource requires a compute type, got {v.value}"
+            )
+        return v
+
+    @property
+    def is_idle(self) -> bool:
+        """Is this compute resource idle? (CPU < 5%)"""
+        return self.cpu_utilization < 5.0
+
+    @property
+    def estimated_waste_usd(self) -> float:
+        """Estimated monthly waste if the resource is idle."""
+        if self.is_idle:
+            return round(self.monthly_cost_usd * 0.85, 2)
+        return 0.0
+
+
+class StorageResource(UniversalResource):
+    """
+    Specialized schema for storage resources (S3, Azure Blobs, RDS).
+    Enforces storage-specific property validation.
+    """
+
+    @field_validator("resource_type")
+    @classmethod
+    def must_be_storage(cls, v: ResourceType) -> ResourceType:
+        storage_types = {
+            ResourceType.S3, ResourceType.AZURE_BLOB, ResourceType.RDS,
+        }
+        if v not in storage_types:
+            raise ValueError(
+                f"StorageResource requires a storage type, got {v.value}"
+            )
+        return v
+
+    @property
+    def is_encrypted(self) -> bool:
+        """Check if encryption is enabled."""
+        return bool(
+            self.properties.get("encryption_enabled", False)
+            or self.properties.get("encryption_at_rest", False)
+        )
+
+    @property
+    def is_public(self) -> bool:
+        """Check if publicly accessible."""
+        return bool(
+            not self.properties.get("public_access_blocked", True)
+            or self.properties.get("publicly_accessible", False)
+            or self.properties.get("container_access") == "blob"
+        )
+
+
+class IdentityResource(UniversalResource):
+    """
+    Specialized schema for identity resources (IAM Users, IAM Roles).
+    Enforces identity-specific property validation.
+    """
+
+    @field_validator("resource_type")
+    @classmethod
+    def must_be_identity(cls, v: ResourceType) -> ResourceType:
+        identity_types = {
+            ResourceType.IAM_USER, ResourceType.IAM_ROLE,
+            ResourceType.AZURE_OIDC,
+        }
+        if v not in identity_types:
+            raise ValueError(
+                f"IdentityResource requires an identity type, got {v.value}"
+            )
+        return v
+
+    @property
+    def has_mfa(self) -> bool:
+        return bool(self.properties.get("mfa_enabled", False))
+
+    @property
+    def is_inactive(self) -> bool:
+        return self.properties.get("days_since_last_login", 0) > 90
+
+    @property
+    def is_overly_permissive(self) -> bool:
+        return bool(
+            self.properties.get("has_admin_policy", False)
+            or self.properties.get("overly_permissive", False)
+        )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CROSS-CLOUD TRUST MODEL
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class CrossCloudTrust(BaseModel):
+    """
+    Cross-Cloud Trust Schema
+    -------------------------
+    Defines how an identity in one provider is authorized for a resource
+    in another (e.g., AWS Lambda -> Azure Blob).
+
+    Wraps OIDCTrustLink with additional authorization validation:
+      - Ensures source and target are different providers
+      - Validates token lifetime constraints
+      - Checks scope permissions are least-privilege
+    """
+
+    trust_id: str = Field(
+        default_factory=lambda: f"xcloud-{uuid.uuid4().hex[:8]}",
+        description="Cross-cloud trust identifier"
+    )
+    source_identity: str = Field(
+        description="Resource ID of the identity source (e.g., Lambda ARN)"
+    )
+    source_provider: CloudProvider = Field(
+        description="Provider where the identity originates"
+    )
+    target_resource: str = Field(
+        description="Resource ID of the target (e.g., Azure Blob container)"
+    )
+    target_provider: CloudProvider = Field(
+        description="Provider where the target resource lives"
+    )
+    oidc_link: Optional[OIDCTrustLink] = Field(
+        default=None,
+        description="Underlying OIDC trust link"
+    )
+    max_token_lifetime_seconds: int = Field(
+        default=3600,
+        ge=300,
+        le=43200,
+        description="Maximum OIDC token lifetime in seconds (5min–12hr)"
+    )
+    allowed_actions: list[str] = Field(
+        default_factory=list,
+        description="Specific actions the source is authorized to perform"
+    )
+    is_least_privilege: bool = Field(
+        default=True,
+        description="Whether this trust follows least-privilege principle"
+    )
+    risk_score: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=100.0,
+        description="Risk score for this cross-cloud trust (0–100)"
+    )
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
+
+    @field_validator("target_provider")
+    @classmethod
+    def must_be_cross_cloud(cls, v: CloudProvider, info) -> CloudProvider:
+        """Validate that source and target are different providers."""
+        source = info.data.get("source_provider")
+        if source and v == source:
+            raise ValueError(
+                f"CrossCloudTrust requires different providers, "
+                f"got source={source.value}, target={v.value}"
+            )
+        return v
+
+    def calculate_risk(self) -> float:
+        """
+        Calculate the risk score for this cross-cloud trust.
+        Higher risk for: broad scopes, no OIDC, long token lifetime.
+        """
+        risk = 0.0
+        # No OIDC link = high risk
+        if self.oidc_link is None or not self.oidc_link.validate_trust():
+            risk += 40.0
+        # Broad actions = higher risk
+        if len(self.allowed_actions) == 0:
+            risk += 20.0  # No actions defined = overly permissive
+        if not self.is_least_privilege:
+            risk += 25.0
+        # Long token lifetime
+        if self.max_token_lifetime_seconds > 7200:
+            risk += 15.0
+        self.risk_score = min(100.0, risk)
+        return self.risk_score
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

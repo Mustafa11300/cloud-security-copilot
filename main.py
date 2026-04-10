@@ -21,13 +21,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from api.findings import router as findings_router
 from api.score import router as score_router
 from api.chat import router as chat_router
-
+from dotenv import load_dotenv
 
 app = FastAPI(
     title="CloudGuard Security Copilot",
     description="AI-powered cloud security and cost optimization",
     version="1.0.0"
 )
+
+load_dotenv()
+
+print("LOADED:", os.getenv("ES_HOST"))
+
 
 # Allow React frontend to call this API (CORS = Cross-Origin Resource Sharing)
 app.add_middleware(

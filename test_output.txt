@@ -1,0 +1,26 @@
+﻿python : \U0001f4e1 EventBus: Sync Redis unavailable (name 'sync_redis' is 
+not defined), in-memory mode
+At line:1 char:1
++ python test_quick.py 2>&1 | Out-File -Encoding utf8 test_output.txt
++ ~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (\U0001f4e1 Even... in-memory m 
+   ode:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+1. All schema imports OK
+2. UniversalResource: account_id=123456789012, metadata={'EWM_Weight': 0.0, 'CRITIC_Index': 0.0}
+3. to_v1_dict keys work
+4. ComputeResource: idle=True, waste=$85.0
+5. ComputeResource validation: correctly rejects S3 type
+6. StorageResource: public=True, encrypted=True
+7. IdentityResource: mfa=False, inactive=True
+8. CrossCloudTrust: risk=40.0
+9. CrossCloudTrust: correctly rejects same-provider
+10. Trapezoidal MF works
+11. Fuzzy classification(45): MEDIUM=1.0
+12. Defuzzified centroid: 42.0
+13. Combined weights sum to 1.0
+14. Drift application works
+15. SimulationEngine: 345 resources
+
+ALL 15 TESTS PASSED!
