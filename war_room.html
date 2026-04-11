@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CloudGuard-B · War Room</title>
+  <meta name="description" content="Real-time agentic visibility dashboard for CloudGuard-B Phase 3. Watch live security drifts, J-Score equilibrium shifts, and swarm reasoning traces." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+  <style>
+    /* ── Design Tokens ─────────────────────────────────────────────── */
+    :root {
+      --bg:          #09090f;
+      --bg2:         #0d0d1a;
+      --bg3:         #12122a;
+      --card:        #13132a;
+      --card-border: rgba(99, 88, 255, 0.18);
+      --accent:      #6358ff;
+      --accent2:     #b14fff;
+      --success:     #00e5a0;
+      --warning:     #f7c948;
+      --danger:      #ff4469;
+      --text:        #e8e6ff;
+      --muted:       #7a78a0;
+      --mono:        'JetBrains Mono', monospace;
+      --sans:        'Inter', sans-serif;
+      --radius:      10px;
+      --transition:  0.25s cubic-bezier(.4,0,.2,1);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Animated Nebula Background ────────────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background:
+        radial-gradient(ellipse 60% 40% at 20% 15%, rgba(99,88,255,0.12) 0%, transparent 70%),
+        radial-gradient(ellipse 50% 35% at 80% 80%, rgba(177,79,255,0.1) 0%, transparent 70%),
+        radial-gradient(ellipse 40% 30% at 55% 50%, rgba(0,229,160,0.04) 0%, transparent 70%);
+    }
+
+    /* ── Top Nav ────────────────────────────────────────────────────── */
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      display: flex; align-items: center; gap: 16px;
+      padding: 12px 24px;
+      background: rgba(9,9,15,0.85);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--card-border);
+    }
+    .nav-logo {
+      font-size: 15px; font-weight: 700; letter-spacing: .5px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .nav-badge {
+      font-size: 10px; font-weight: 600; padding: 2px 8px;
+      border-radius: 99px; letter-spacing: 1px; text-transform: uppercase;
+      background: rgba(99,88,255,0.18); color: var(--accent);
+      border: 1px solid rgba(99,88,255,0.35);
+    }
+    .nav-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+    .ws-pill {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 12px; font-weight: 500; padding: 4px 12px;
+      border-radius: 99px; border: 1px solid var(--card-border);
+      background: var(--card); color: var(--muted);
+      transition: var(--transition);
+    }
+    .ws-pill .dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--muted); transition: var(--transition);
+    }
+    .ws-pill.connected { border-color: rgba(0,229,160,0.4); color: var(--success); }
+    .ws-pill.connected .dot { background: var(--success); box-shadow: 0 0 6px var(--success); animation: pulse-dot 2s infinite; }
+    .ws-pill.error { border-color: rgba(255,68,105,0.4); color: var(--danger); }
+    .ws-pill.error .dot { background: var(--danger); }
+    @keyframes pulse-dot { 0%,100%{opacity:1}50%{opacity:.4} }
+
+    /* ── Layout ─────────────────────────────────────────────────────── */
+    .container { position: relative; z-index: 1; padding: 24px; max-width: 1600px; margin: 0 auto; }
+
+    .grid-main {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      grid-template-rows: auto;
+      gap: 16px;
+    }
+
+    /* ── Cards ──────────────────────────────────────────────────────── */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      position: relative; overflow: hidden;
+    }
+    .card::before {
+      content: '';
+      position: absolute; inset: 0; pointer-events: none;
+      background: linear-gradient(135deg, rgba(99,88,255,0.04), transparent 60%);
+    }
+    .card-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .card-title {
+      font-size: 11px; font-weight: 600; letter-spacing: 1.2px;
+      text-transform: uppercase; color: var(--muted);
+    }
+    .card-badge {
+      font-size: 10px; padding: 2px 8px; border-radius: 99px;
+      font-weight: 600; letter-spacing: .5px;
+    }
+
+    /* ── J-Score Gauge ──────────────────────────────────────────────── */
+    .j-gauge-wrap { grid-column: span 1; }
+    .j-score-value {
+      font-size: 52px; font-weight: 900; line-height: 1;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      font-family: var(--mono);
+    }
+    .j-score-pct {
+      font-size: 13px; color: var(--muted); margin-top: 4px;
+    }
+    .j-score-pct span { color: var(--success); font-weight: 600; }
+
+    /* ── Weight Bars ────────────────────────────────────────────────── */
+    .weight-bars { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
+    .weight-row { display: flex; align-items: center; gap: 10px; }
+    .weight-label { width: 32px; font-size: 12px; font-family: var(--mono); color: var(--muted); flex-shrink: 0; }
+    .weight-bar-track {
+      flex: 1; height: 8px; border-radius: 99px;
+      background: rgba(255,255,255,0.06);
+      position: relative; overflow: hidden;
+    }
+    .weight-bar-fill {
+      height: 100%; border-radius: 99px;
+      transition: width 0.6s cubic-bezier(.4,0,.2,1);
+      position: relative;
+    }
+    .weight-bar-fill.risk  { background: linear-gradient(90deg, var(--danger), #ff8a65); }
+    .weight-bar-fill.cost  { background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+    .weight-val { width: 38px; font-size: 12px; font-family: var(--mono); color: var(--text); text-align: right; }
+
+    /* ── Topology Grid ──────────────────────────────────────────────── */
+    .topology-wrap { grid-column: span 2; }
+    .topo-stats {
+      display: flex; gap: 16px; margin-bottom: 12px;
+    }
+    .topo-stat {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 12px; font-weight: 600;
+    }
+    .topo-stat .sq { width: 10px; height: 10px; border-radius: 3px; }
+    .sq-green  { background: var(--success); box-shadow: 0 0 6px var(--success); }
+    .sq-yellow { background: var(--warning); box-shadow: 0 0 6px var(--warning); }
+    .sq-red    { background: var(--danger);  box-shadow: 0 0 6px var(--danger);  }
+
+    .topo-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(12px, 1fr));
+      gap: 3px;
+    }
+    .topo-cell {
+      width: 12px; height: 12px; border-radius: 3px;
+      background: rgba(255,255,255,0.06);
+      transition: background 0.5s ease, box-shadow 0.5s ease;
+      cursor: default;
+    }
+    .topo-cell.green  { background: var(--success); box-shadow: 0 0 4px rgba(0,229,160,0.5); }
+    .topo-cell.yellow { background: var(--warning); box-shadow: 0 0 4px rgba(247,201,72,0.5); }
+    .topo-cell.red    { background: var(--danger);  box-shadow: 0 0 4px rgba(255,68,105,0.5); }
+    .topo-cell.flash  { animation: cell-flash 0.6s ease; }
+    @keyframes cell-flash { 0%,100%{filter:brightness(1)}50%{filter:brightness(2.5)} }
+
+    /* ── Negotiation Chart ──────────────────────────────────────────── */
+    .nego-wrap { grid-column: span 3; }
+    #negoCanvas { width: 100%; height: 150px; display: block; }
+
+    /* ── Event Feed ─────────────────────────────────────────────────── */
+    .feed-wrap { grid-column: span 2; }
+    .event-feed {
+      height: 320px; overflow-y: auto;
+      display: flex; flex-direction: column; gap: 6px;
+      scrollbar-width: thin; scrollbar-color: var(--accent) transparent;
+    }
+    .event-item {
+      padding: 9px 12px; border-radius: 7px;
+      border-left: 3px solid transparent;
+      background: rgba(255,255,255,0.03);
+      font-size: 12px; font-family: var(--mono);
+      display: flex; align-items: flex-start; gap: 10px;
+      opacity: 0; transform: translateY(-6px);
+      animation: slide-in 0.3s forwards;
+      transition: background 0.2s;
+    }
+    .event-item:hover { background: rgba(99,88,255,0.08); }
+    @keyframes slide-in { to { opacity:1; transform:translateY(0); } }
+    .event-item.Drift            { border-color: var(--warning); }
+    .event-item.Remediation      { border-color: var(--success); }
+    .event-item.Negotiation      { border-color: var(--accent2); }
+    .event-item.TickerUpdate     { border-color: var(--accent); }
+    .event-item.TopologySync     { border-color: rgba(255,255,255,0.15); }
+    .event-item.Heartbeat        { border-color: rgba(255,255,255,0.08); }
+    .event-item.SwarmCoolingDown { border-color: var(--danger); }
+    .event-item.BufferReplay     { border-color: var(--accent2); }
+    .event-tag {
+      font-size: 10px; font-weight: 700; padding: 2px 6px;
+      border-radius: 4px; white-space: nowrap; flex-shrink: 0;
+      letter-spacing: .5px;
+    }
+    .tag-Drift            { background:#f7c94822; color:var(--warning); }
+    .tag-Remediation      { background:#00e5a022; color:var(--success); }
+    .tag-Negotiation      { background:#b14fff22; color:var(--accent2); }
+    .tag-TickerUpdate     { background:#6358ff22; color:var(--accent); }
+    .tag-TopologySync     { background:#ffffff10; color:var(--muted); }
+    .tag-Heartbeat        { background:#ffffff08; color:var(--muted); }
+    .tag-SwarmCoolingDown { background:#ff446922; color:var(--danger); }
+    .tag-BufferReplay     { background:#b14fff22; color:var(--accent2); }
+    .event-body { flex: 1; color: var(--muted); line-height: 1.4; }
+    .event-body strong { color: var(--text); }
+    .event-tick { font-size: 10px; color: rgba(120,115,160,0.7); white-space: nowrap; }
+
+    /* ── Agent Console ──────────────────────────────────────────────── */
+    .console-wrap { grid-column: span 1; }
+    .console-box {
+      height: 320px; overflow-y: auto; padding: 10px;
+      background: #060610; border-radius: 7px;
+      font-family: var(--mono); font-size: 11px; line-height: 1.6;
+      scrollbar-width: thin; scrollbar-color: var(--card-border) transparent;
+    }
+    .console-line { color: var(--muted); }
+    .console-line .ts { color: rgba(120,115,160,0.5); }
+    .console-line .lvl-info  { color: var(--accent); }
+    .console-line .lvl-warn  { color: var(--warning); }
+    .console-line .lvl-error { color: var(--danger); }
+    .console-line .lvl-ok    { color: var(--success); }
+
+    /* ── Cooling-Down Banner ────────────────────────────────────────── */
+    #coolingBanner {
+      display: none; grid-column: span 3;
+      padding: 12px 20px; border-radius: var(--radius);
+      background: rgba(255,68,105,0.12); border: 1px solid rgba(255,68,105,0.4);
+      color: var(--danger); font-size: 13px; font-weight: 600;
+      text-align: center; letter-spacing: .5px;
+      animation: pulse-banner 2s ease infinite;
+    }
+    @keyframes pulse-banner { 0%,100%{opacity:1}50%{opacity:.6} }
+
+    /* ── Controls ───────────────────────────────────────────────────── */
+    .controls {
+      display: flex; gap: 10px; align-items: center; margin-bottom: 16px;
+    }
+    .btn {
+      font-family: var(--sans); font-size: 12px; font-weight: 600;
+      padding: 7px 16px; border-radius: 7px; cursor: pointer;
+      border: 1px solid var(--card-border); background: var(--card); color: var(--text);
+      transition: var(--transition);
+    }
+    .btn:hover { background: rgba(99,88,255,0.15); border-color: var(--accent); color: var(--accent); }
+    .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .btn.primary:hover { background: #7a6fff; }
+    .url-input {
+      font-family: var(--mono); font-size: 12px;
+      padding: 7px 14px; border-radius: 7px;
+      background: var(--bg2); border: 1px solid var(--card-border);
+      color: var(--text); flex: 1; outline: none;
+      transition: var(--transition);
+    }
+    .url-input:focus { border-color: var(--accent); }
+
+    /* ── Responsive ─────────────────────────────────────────────────── */
+    @media (max-width: 900px) {
+      .grid-main { grid-template-columns: 1fr 1fr; }
+      .nego-wrap, .feed-wrap, .coolingBanner { grid-column: span 2; }
+      .console-wrap { grid-column: span 2; }
+      .topology-wrap { grid-column: span 2; }
+    }
+    @media (max-width: 600px) {
+      .grid-main { grid-template-columns: 1fr; }
+      .nego-wrap, .feed-wrap, .console-wrap, .topology-wrap, #coolingBanner,
+      .j-gauge-wrap { grid-column: span 1; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Navigation ──────────────────────────────────────────────────────────── -->
+<nav>
+  <span class="nav-logo">⬡ CloudGuard-B</span>
+  <span class="nav-badge">WAR ROOM · PHASE 3</span>
+  <div class="nav-right">
+    <div id="wsPill" class="ws-pill">
+      <span class="dot"></span>
+      <span id="wsLabel">Disconnected</span>
+    </div>
+    <span id="clientCount" style="font-size:12px;color:var(--muted)"></span>
+  </div>
+</nav>
+
+<div class="container">
+
+  <!-- Controls -->
+  <div class="controls">
+    <input id="wsUrl" class="url-input" type="text" value="ws://localhost:8000/ws/war-room" spellcheck="false" />
+    <button id="btnConnect" class="btn primary" onclick="connectWS()">Connect</button>
+    <button class="btn" onclick="disconnectWS()">Disconnect</button>
+    <button class="btn" onclick="testEmit()">⚡ Test Emit</button>
+    <button class="btn" onclick="clearFeed()">Clear Feed</button>
+  </div>
+
+  <div class="grid-main">
+
+    <!-- ── Cooling-Down Banner ──────────────────────────────────────── -->
+    <div id="coolingBanner">
+      🧊 SWARM COOLING DOWN  —  Gemini rate limit hit. Retry in <span id="retryCountdown">60</span>s
+    </div>
+
+    <!-- ── J-Score Gauge ────────────────────────────────────────────── -->
+    <div class="card j-gauge-wrap">
+      <div class="card-header">
+        <span class="card-title">J · Equilibrium Score</span>
+        <span class="card-badge" style="background:rgba(99,88,255,0.15);color:var(--accent);">LIVE</span>
+      </div>
+      <div class="j-score-value" id="jValue">0.5000</div>
+      <div class="j-score-pct">Governed: <span id="jPct">50.00</span>%</div>
+      <div class="weight-bars">
+        <div class="weight-row">
+          <span class="weight-label">w_R</span>
+          <div class="weight-bar-track">
+            <div class="weight-bar-fill risk" id="barRisk" style="width:60%"></div>
+          </div>
+          <span class="weight-val" id="valRisk">0.600</span>
+        </div>
+        <div class="weight-row">
+          <span class="weight-label">w_C</span>
+          <div class="weight-bar-track">
+            <div class="weight-bar-fill cost" id="barCost" style="width:40%"></div>
+          </div>
+          <span class="weight-val" id="valCost">0.400</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Topology Grid ────────────────────────────────────────────── -->
+    <div class="card topology-wrap">
+      <div class="card-header">
+        <span class="card-title">345-Resource Topology Pulse</span>
+        <div class="topo-stats">
+          <span class="topo-stat"><span class="sq sq-green"></span><span id="cntGreen">0</span> Green</span>
+          <span class="topo-stat"><span class="sq sq-yellow"></span><span id="cntYellow">0</span> Yellow</span>
+          <span class="topo-stat"><span class="sq sq-red"></span><span id="cntRed">0</span> Red</span>
+        </div>
+      </div>
+      <div class="topo-grid" id="topoGrid"></div>
+    </div>
+
+    <!-- ── Negotiation / Pareto Chart ──────────────────────────────── -->
+    <div class="card nego-wrap">
+      <div class="card-header">
+        <span class="card-title">Negotiation Tug-of-War  ·  J-Score Pareto Front</span>
+        <span class="card-badge" style="background:rgba(177,79,255,0.12);color:var(--accent2);">TICKER</span>
+      </div>
+      <canvas id="negoCanvas"></canvas>
+    </div>
+
+    <!-- ── Event Feed ───────────────────────────────────────────────── -->
+    <div class="card feed-wrap">
+      <div class="card-header">
+        <span class="card-title">Live Event Stream</span>
+        <span class="card-badge" style="background:rgba(0,229,160,0.1);color:var(--success);" id="feedCount">0 events</span>
+      </div>
+      <div class="event-feed" id="eventFeed"></div>
+    </div>
+
+    <!-- ── Agent Console ────────────────────────────────────────────── -->
+    <div class="card console-wrap">
+      <div class="card-header">
+        <span class="card-title">Kernel Trace Console</span>
+        <span class="card-badge" style="background:rgba(99,88,255,0.1);color:var(--muted);" id="traceCount">0 traces</span>
+      </div>
+      <div class="console-box" id="consoleBox"></div>
+    </div>
+
+  </div><!-- /.grid-main -->
+</div><!-- /.container -->
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════════════════════════════
+let ws = null;
+let eventCount = 0;
+let traceCount  = 0;
+let retryTimer  = null;
+
+// Negotiation history (last 60 ticks)
+const MAX_TICKS = 60;
+const wRHistory = Array(MAX_TICKS).fill(0.6);
+const wCHistory = Array(MAX_TICKS).fill(0.4);
+const jHistory  = Array(MAX_TICKS).fill(0.5);
+
+// Topology: resource-id → cell element
+const topoCells = {};
+let topoData    = {};  // resource_id → status
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  TOPOLOGY GRID  (345 cells)
+// ═══════════════════════════════════════════════════════════════════════════════
+(function initTopo() {
+  const grid = document.getElementById('topoGrid');
+  for (let i = 1; i <= 345; i++) {
+    const cell = document.createElement('div');
+    cell.className = 'topo-cell';
+    cell.id = `tc-res-${String(i).padStart(3,'0')}`;
+    cell.title = `res-${String(i).padStart(3,'0')}`;
+    grid.appendChild(cell);
+    topoCells[`res-${String(i).padStart(3,'0')}`] = cell;
+  }
+})();
+
+function applyTopology(resources) {
+  let g=0, y=0, r=0;
+  for (const {resource_id, status} of resources) {
+    if (!resource_id) continue;
+    const old = topoData[resource_id];
+    topoData[resource_id] = status;
+    const el = topoCells[resource_id];
+    if (el) {
+      el.className = 'topo-cell ' + status.toLowerCase();
+      if (old !== status) {
+        el.classList.add('flash');
+        setTimeout(() => el.classList.remove('flash'), 700);
+      }
+    }
+    if (status === 'GREEN')  g++;
+    else if (status === 'YELLOW') y++;
+    else if (status === 'RED')    r++;
+  }
+  document.getElementById('cntGreen').textContent  = g;
+  document.getElementById('cntYellow').textContent = y;
+  document.getElementById('cntRed').textContent    = r;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  CANVAS CHART  — Negotiation Tug-of-War
+// ═══════════════════════════════════════════════════════════════════════════════
+const canvas = document.getElementById('negoCanvas');
+const ctx    = canvas.getContext('2d');
+
+function resizeCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width  = rect.width  * dpr;
+  canvas.height = rect.height * dpr;
+  ctx.scale(dpr, dpr);
+  drawChart();
+}
+
+function drawChart() {
+  const W = canvas.offsetWidth, H = canvas.offsetHeight;
+  ctx.clearRect(0, 0, W, H);
+
+  // Background grid
+  ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+  ctx.lineWidth = 1;
+  for (let y = 0; y <= 1; y += 0.25) {
+    const yp = H - y * H;
+    ctx.beginPath(); ctx.moveTo(0, yp); ctx.lineTo(W, yp); ctx.stroke();
+  }
+
+  const drawLine = (data, color, shadow) => {
+    if (data.length < 2) return;
+    ctx.shadowColor = shadow; ctx.shadowBlur = 8;
+    ctx.strokeStyle = color; ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    data.forEach((v, i) => {
+      const x = (i / (MAX_TICKS - 1)) * W;
+      const y = H - v * H;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  };
+
+  drawLine(wRHistory, '#ff4469', 'rgba(255,68,105,0.6)');
+  drawLine(wCHistory, '#6358ff', 'rgba(99,88,255,0.6)');
+  drawLine(jHistory,  '#00e5a0', 'rgba(0,229,160,0.4)');
+
+  // Legend
+  const items = [
+    ['w_R (Risk)', '#ff4469'], ['w_C (Cost)', '#6358ff'], ['J Score', '#00e5a0']
+  ];
+  items.forEach(([label, color], i) => {
+    ctx.fillStyle = color; ctx.fillRect(8 + i * 90, 8, 12, 3);
+    ctx.fillStyle = 'rgba(200,198,230,0.7)'; ctx.font = '10px Inter';
+    ctx.fillText(label, 24 + i * 90, 14);
+  });
+}
+
+window.addEventListener('resize', resizeCanvas);
+setTimeout(resizeCanvas, 100);
+
+function pushChart(wR, wC, j) {
+  wRHistory.push(wR); if (wRHistory.length > MAX_TICKS) wRHistory.shift();
+  wCHistory.push(wC); if (wCHistory.length > MAX_TICKS) wCHistory.shift();
+  jHistory.push(j);   if (jHistory.length  > MAX_TICKS) jHistory.shift();
+  drawChart();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  J-SCORE GAUGE
+// ═══════════════════════════════════════════════════════════════════════════════
+function updateGauge(wR, wC, j) {
+  document.getElementById('jValue').textContent = j.toFixed(4);
+  document.getElementById('jPct').textContent   = ((1-j)*100).toFixed(2);
+  document.getElementById('valRisk').textContent = wR.toFixed(3);
+  document.getElementById('valCost').textContent = wC.toFixed(3);
+  document.getElementById('barRisk').style.width = (wR * 100) + '%';
+  document.getElementById('barCost').style.width = (wC * 100) + '%';
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  EVENT FEED
+// ═══════════════════════════════════════════════════════════════════════════════
+const FEED_MAX = 200;
+const feed     = document.getElementById('eventFeed');
+
+function addFeedItem(evt) {
+  const type = evt.event_type || 'Unknown';
+  const body = evt.message_body || {};
+  const tick = evt.tick_timestamp;
+
+  let summary = '';
+  if (type === 'Drift') {
+    const sev = body.severity || '';
+    const sevColor = sev==='CRITICAL'||sev==='HIGH' ? 'var(--danger)' : sev==='MEDIUM' ? 'var(--warning)' : 'var(--muted)';
+    summary = `<strong>${body.resource_id}</strong> · <span style="color:${sevColor}">${body.drift_type} [${sev}]</span>`;
+    if (body.is_false_positive) summary += ' <span style="color:var(--muted)">(FP)</span>';
+  } else if (type === 'Remediation') {
+    const ok = body.success;
+    summary = `<strong>${body.resource_id}</strong> · ${body.action} [${body.tier}] → <span style="color:${ok?'var(--success)':'var(--danger)'}">${ok?'✓ SUCCESS':'✗ FAILED'}</span>  ΔJ=${body.j_delta>=0?'+':''}${(body.j_delta||0).toFixed(4)}`;
+  } else if (type === 'TickerUpdate') {
+    summary = `w_R=<strong>${(body.w_R||0).toFixed(3)}</strong>  w_C=<strong>${(body.w_C||0).toFixed(3)}</strong>  J=<strong>${(body.j_score||0).toFixed(4)}</strong>  (${body.trigger||''})`;
+  } else if (type === 'TopologySync') {
+    summary = `🟢 ${body.green_count||0}  🟡 ${body.yellow_count||0}  🔴 ${body.red_count||0}  / ${body.total||0} resources`;
+  } else if (type === 'BufferReplay') {
+    summary = `Replayed <strong>${body.count||0}</strong> buffered events`;
+  } else if (type === 'SwarmCoolingDown') {
+    summary = `⚠ ${body.reason} · retry in <strong>${body.retry_after_s}s</strong>`;
+  } else if (type === 'Heartbeat') {
+    summary = `status=${body.status}  tick=${body.tick}`;
+  } else {
+    summary = JSON.stringify(body).slice(0, 120);
+  }
+
+  const div = document.createElement('div');
+  div.className = `event-item ${type}`;
+  div.innerHTML = `
+    <span class="event-tag tag-${type}">${type.toUpperCase()}</span>
+    <span class="event-body">${summary}</span>
+    <span class="event-tick">${tick !== undefined ? ('T'+tick).slice(0,8) : ''}</span>
+  `;
+  feed.prepend(div);
+
+  // Trim feed
+  while (feed.children.length > FEED_MAX) feed.removeChild(feed.lastChild);
+
+  document.getElementById('feedCount').textContent = `${++eventCount} events`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  KERNEL TRACE CONSOLE
+// ═══════════════════════════════════════════════════════════════════════════════
+const consoleBox = document.getElementById('consoleBox');
+
+function addConsoleLine(level, msg) {
+  const now = new Date().toISOString().slice(11,23);
+  const div = document.createElement('div');
+  div.className = 'console-line';
+  div.innerHTML = `<span class="ts">[${now}]</span> <span class="lvl-${level}">${level.toUpperCase().padEnd(5)}</span> ${msg}`;
+  consoleBox.appendChild(div);
+  if (consoleBox.children.length > 300) consoleBox.removeChild(consoleBox.firstChild);
+  consoleBox.scrollTop = consoleBox.scrollHeight;
+  document.getElementById('traceCount').textContent = `${++traceCount} traces`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  COOLING-DOWN BANNER
+// ═══════════════════════════════════════════════════════════════════════════════
+function showCoolingBanner(seconds) {
+  const banner = document.getElementById('coolingBanner');
+  banner.style.display = 'block';
+  let s = seconds;
+  clearInterval(retryTimer);
+  retryTimer = setInterval(() => {
+    s--;
+    document.getElementById('retryCountdown').textContent = s;
+    if (s <= 0) {
+      clearInterval(retryTimer);
+      banner.style.display = 'none';
+    }
+  }, 1000);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  MESSAGE ROUTER
+// ═══════════════════════════════════════════════════════════════════════════════
+function routeEvent(evt) {
+  const type = evt.event_type;
+  const body = evt.message_body || {};
+
+  // Always update gauge + chart when weights are present
+  if (evt.w_R !== undefined) {
+    updateGauge(evt.w_R, evt.w_C, evt.j_score);
+    pushChart(evt.w_R, evt.w_C, evt.j_score);
+  }
+
+  if (type === 'TopologySync' && body.resources) {
+    applyTopology(body.resources);
+  }
+
+  if (type === 'SwarmCoolingDown') {
+    showCoolingBanner(body.retry_after_s || 60);
+    addConsoleLine('error', `SWARM_COOLING_DOWN: ${body.reason}`);
+  }
+
+  if (type === 'BufferReplay') {
+    addConsoleLine('info', `Buffer replay: ${body.count} events received`);
+    // Route each buffered event individually
+    (body.events || []).forEach(e => {
+      if (e.event_type !== 'BufferReplay') routeEvent(e);
+    });
+    return; // don't double-add the BufferReplay itself
+  }
+
+  if (type === 'Heartbeat') {
+    addConsoleLine('ok', `HEARTBEAT tick=${body.tick} clients=${body.client_count||'?'}`);
+  } else if (type === 'Drift') {
+    addConsoleLine('warn', `DRIFT ${body.resource_id} [${body.severity}] ${body.drift_type}`);
+  } else if (type === 'Remediation') {
+    const lv = body.success ? 'ok' : 'error';
+    addConsoleLine(lv, `REMEDIATION ${body.resource_id} ${body.action} → ${body.success?'OK':'FAIL'}`);
+  } else if (type === 'TickerUpdate') {
+    addConsoleLine('info', `TICKER w_R=${(body.w_R||0).toFixed(3)} w_C=${(body.w_C||0).toFixed(3)} J=${(body.j_score||0).toFixed(4)}`);
+  }
+
+  addFeedItem(evt);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  WEBSOCKET MANAGEMENT
+// ═══════════════════════════════════════════════════════════════════════════════
+function setPill(state) {
+  const pill = document.getElementById('wsPill');
+  const lbl  = document.getElementById('wsLabel');
+  pill.className = 'ws-pill ' + state;
+  const labels = { connected:'Connected', error:'Connection Error', '':'Disconnected' };
+  lbl.textContent = labels[state] || 'Disconnected';
+}
+
+function connectWS() {
+  if (ws) ws.close();
+  const url = document.getElementById('wsUrl').value.trim();
+  if (!url) return;
+  setPill('');
+  addConsoleLine('info', `Connecting to ${url} …`);
+
+  try {
+    ws = new WebSocket(url);
+  } catch (e) {
+    setPill('error');
+    addConsoleLine('error', `WebSocket creation failed: ${e}`);
+    return;
+  }
+
+  ws.onopen = () => {
+    setPill('connected');
+    addConsoleLine('ok', `WebSocket connected ✓`);
+  };
+
+  ws.onmessage = (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      routeEvent(data);
+    } catch (ex) {
+      addConsoleLine('warn', `Non-JSON message: ${e.data?.slice(0,100)}`);
+    }
+  };
+
+  ws.onclose = (e) => {
+    setPill('');
+    addConsoleLine('warn', `WebSocket closed (code=${e.code})`);
+  };
+
+  ws.onerror = () => {
+    setPill('error');
+    addConsoleLine('error', 'WebSocket error — is the server running?');
+  };
+}
+
+function disconnectWS() {
+  if (ws) { ws.close(); ws = null; }
+  setPill('');
+}
+
+function testEmit() {
+  const statusUrl = document.getElementById('wsUrl').value
+    .replace('ws://', 'http://').replace('wss://', 'https://')
+    .replace('/ws/war-room', '/ws/war-room/test-emit');
+  fetch(statusUrl)
+    .then(r => r.json())
+    .then(d => addConsoleLine('ok', `Test emit OK: ${JSON.stringify(d).slice(0,120)}`))
+    .catch(e => addConsoleLine('error', `Test emit failed: ${e}`));
+}
+
+function clearFeed() {
+  document.getElementById('eventFeed').innerHTML = '';
+  consoleBox.innerHTML = '';
+  eventCount = 0; traceCount = 0;
+  document.getElementById('feedCount').textContent = '0 events';
+  document.getElementById('traceCount').textContent = '0 traces';
+}
+
+// Heartbeat keepalive ping every 20 s
+setInterval(() => { if (ws && ws.readyState === WebSocket.OPEN) ws.send('ping'); }, 20000);
+
+// Auto-connect on load
+window.addEventListener('load', () => {
+  resizeCanvas();
+  connectWS();
+});
+</script>
+</body>
+</html>

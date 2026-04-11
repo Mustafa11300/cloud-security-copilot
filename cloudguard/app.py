@@ -29,6 +29,9 @@ from cloudguard.api.routes import (
     events_router,
 )
 
+# Phase 3 War Room — WebSocket streaming engine
+from cloudguard.api.streamer import war_room_router, lifespan
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -42,11 +45,13 @@ app = FastAPI(
     description=(
         "GenAI-Powered Autonomous Cloud Governance Platform.\n\n"
         "**Phase 1**: SimulationEngine, MathEngine, StateBranchManager.\n"
-        "**Phase 2**: Multi-Agent Swarm (CISO + Controller + Orchestrator)."
+        "**Phase 2**: Multi-Agent Swarm (CISO + Controller + Orchestrator).\n"
+        "**Phase 3**: War Room — Real-time WebSocket streaming engine."
     ),
-    version="0.1.0",
+    version="0.3.0",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 # CORS
@@ -63,6 +68,9 @@ app.include_router(simulation_router)
 app.include_router(math_router)
 app.include_router(branches_router)
 app.include_router(events_router)
+
+# ── Phase 3 War Room (WebSocket) ──────────────────────────────────────────────
+app.include_router(war_room_router)
 
 # ── Original CloudGuard Routes (v1) ──────────────────────────────────────────
 try:
@@ -93,6 +101,7 @@ def health_check():
 
 @app.get("/api/v2/health", tags=["Health"])
 def health_v2():
+    from cloudguard.api.streamer import CLIENTS, EVENT_BUFFER, TOPOLOGY
     return {
         "status": "healthy",
         "subsystems": {
@@ -104,5 +113,12 @@ def health_v2():
             "remediation_protocol": True,
             "swarm_interfaces": True,
             "telemetry_generator": True,
+            "war_room_streamer": True,
+        },
+        "war_room": {
+            "ws_endpoint": "ws://localhost:8000/ws/war-room",
+            "active_clients": len(CLIENTS),
+            "buffer_events": len(EVENT_BUFFER),
+            "topology_resources": len(TOPOLOGY),
         },
     }
