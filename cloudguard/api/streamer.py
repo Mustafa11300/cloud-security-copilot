@@ -85,13 +85,14 @@ TOPOLOGY: dict[str, str] = {}
 # ═══════════════════════════════════════════════════════════════════════════════
 
 _EVENT_TYPE_MAP: dict[str, str] = {
-    "DRIFT":       "Drift",
-    "REMEDIATION": "Remediation",
-    "NEGOTIATION": "Negotiation",
-    "HEARTBEAT":   "Heartbeat",
+    "DRIFT":            "Drift",
+    "REMEDIATION":      "Remediation",
+    "NEGOTIATION":      "Negotiation",
+    "HEARTBEAT":        "Heartbeat",
     "TICKER_UPDATE":      "TickerUpdate",
     "TOPOLOGY_SYNC":      "TopologySync",
     "SWARM_COOLING_DOWN": "SwarmCoolingDown",
+    "FORECAST_SIGNAL":    "ForecastSignal",
 }
 
 
@@ -172,6 +173,25 @@ def _build_ui_event(raw: dict[str, Any]) -> dict[str, Any]:
             "retry_after_s": data.get("retry_after_s", 60),
             "agent_id":      data.get("agent_id", "swarm"),
         }
+
+    elif raw_type == "FORECAST_SIGNAL":
+        # Phase 4: Proactive Intelligence — Amber Alert from ThreatForecaster
+        message_body = {
+            "target":          data.get("target", "unknown"),
+            "probability":     data.get("probability", 0.0),
+            "type":            data.get("type", "Advisory"),
+            "horizon":         data.get("horizon", "5 ticks"),
+            "predicted_drift": data.get("predicted_drift", "UNKNOWN"),
+            "is_shadow_ai":    data.get("is_shadow_ai", False),
+            "j_forecast":      data.get("j_forecast", 0.0),
+            "recon_chain":     data.get("recon_chain"),
+            "confidence_lo":   data.get("confidence_lo", 0.0),
+            "confidence_hi":   data.get("confidence_hi", 0.0),
+        }
+        # Mark target resource as AMBER in topology
+        target = data.get("target")
+        if target and data.get("type") == "Amber_Alert":
+            _update_topology(target, "CRITICAL")
 
     elif raw_type == "HEARTBEAT":
         message_body = {

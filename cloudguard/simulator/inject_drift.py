@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import sys
+import time
 from datetime import datetime, timezone
 
 from dotenv import load_dotenv
@@ -164,13 +165,159 @@ async def inject_drift(drift_type: str, resource_id: str, severity: str, verbose
     print("\n═" * 80)
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# PROACTIVE MODE — 20-tick Amber Sequence Injection
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def inject_proactive(
+    resource_id: str,
+    tick_delay: float = 0.4,
+    redis_url: str = "redis://localhost:6379",
+) -> None:
+    """
+    --mode proactive
+
+    Injects the 20-tick Amber Sequence into the CloudGuard-B pipeline:
+      - Ticks 1-5  : LOW breadcrumbs  (IAM:GetPolicy, S3:ListBuckets, …)
+      - Ticks 6-10 : MEDIUM recon     (VPC:DescribeFlowLogs, CloudTrail:LookupEvents, …)
+      - Ticks 11-15: HIGH recon chain  (DescribeRoles×3, AssumeRole, CreateRole)
+      - Tick  16   : OIDC_TRUST_BREACH (the actual breach event)
+      - Ticks 17-20: POST-BREACH       (lateral movement + data exfil probes)
+
+    For each tick:
+      1. Publishes the event to Redis `cloudguard_events` channel
+      2. Feeds the event into ThreatForecaster's sliding window
+      3. Runs predict_tick() → prints P, predicted drift, Amber Alert status
+    """
+    from cloudguard.simulator.amber_sequence_generator import AmberSequenceGenerator
+    from cloudguard.forecaster.threat_forecaster import ThreatForecaster
+
+    print("\n" + "═" * 80)
+    print("  CLOUDGUARD-B ⚡ PROACTIVE MODE — 20-TICK AMBER SEQUENCE")
+    print(f"  Resource: {resource_id}")
+    print("═" * 80)
+
+    gen = AmberSequenceGenerator(resource_id=resource_id)
+    ticks = gen.generate()
+
+    forecaster = ThreatForecaster(window_size=100)
+    # Prime the LSTM with synthetic recon training
+    losses = forecaster.train_on_recon_patterns(num_synthetic=50)
+    print(f"\n[LSTM] Pre-trained — final loss: {losses[-1]:.4f}\n")
+
+    # Optional Redis client (graceful fallback)
+    redis_client = None
+    try:
+        import redis.asyncio as aioredis
+        redis_client = aioredis.from_url(
+            redis_url, decode_responses=True, socket_connect_timeout=3
+        )
+        await redis_client.ping()
+        print(f"[Redis] Connected → {redis_url}\n")
+    except Exception as exc:
+        print(f"[Redis] Unavailable ({exc}) — proceeding in offline mode\n")
+
+    # ─── Tick loop ────────────────────────────────────────────────────────────
+    phase_colors = {
+        "breadcrumb_low":    "\033[92m",   # green
+        "breadcrumb_medium": "\033[93m",   # yellow
+        "breadcrumb_high":   "\033[33m",   # dark-yellow
+        "breach":            "\033[91m",   # red
+        "post_breach":       "\033[95m",   # magenta
+    }
+    reset = "\033[0m"
+
+    for evt in ticks:
+        tick_num  = evt["timestamp_tick"]
+        phase     = evt["amber_phase"]
+        drift_t   = evt["data"]["drift_type"]
+        severity  = evt["data"]["severity"]
+        color     = phase_colors.get(phase, "")
+
+        # 1. Publish to Redis
+        if redis_client:
+            try:
+                await redis_client.publish("cloudguard_events", json.dumps(evt))
+            except Exception:
+                pass
+
+        # 2. Ingest into forecaster
+        forecaster.ingest_event(evt)
+
+        # 3. Predict
+        result = forecaster.predict_tick(current_j=0.5)
+
+        amber_flag = "🚨 AMBER ALERT" if result.is_amber_alert else "   advisory  "
+        shadow_flag = " 👁️  SHADOW-AI" if result.is_shadow_ai else ""
+        recon_flag  = f" 🔍 RECON:{result.recon_pattern_name}" if result.recon_pattern_detected else ""
+
+        print(
+            f"{color}[Tick {tick_num:02d}/20] phase={phase:<18} "
+            f"drift={drift_t:<24} sev={severity:<8}{reset}\n"
+            f"          {amber_flag}  P={result.probability:.2%}  "
+            f"predicted={result.predicted_drift_type}"
+            f"  horizon={result.horizon_ticks}t"
+            f"{shadow_flag}{recon_flag}"
+        )
+
+        if result.is_amber_alert:
+            print(
+                f"          └─ J_forecast={result.j_forecast:.4f}  "
+                f"CI=[{result.confidence_interval[0]:.2%}, "
+                f"{result.confidence_interval[1]:.2%}]"
+            )
+            # Emit STOCHASTIC_THREAT signal
+            logger.warning(
+                f"🔔 STOCHASTIC_THREAT signal emitted for "
+                f"{result.target_resource_id or resource_id}"
+            )
+
+        time.sleep(tick_delay)
+
+    if redis_client:
+        await redis_client.aclose()
+
+    print("\n" + "═" * 80)
+    print("  AMBER SEQUENCE COMPLETE — 20 ticks replayed")
+    print(f"  Amber Alerts fired: {forecaster.get_stats()['amber_alerts_fired']}")
+    print(f"  Recon patterns:     {forecaster.get_stats()['recon_patterns_found']}")
+    print(f"  Shadow AI detect:   {forecaster.get_stats()['shadow_ai_detections']}")
+    print("═" * 80 + "\n")
+
+
+# ─── CLI ──────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     load_dotenv()
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--type", required=True)
-    parser.add_argument("--resource", required=True)
-    parser.add_argument("--severity", required=True)
+    parser = argparse.ArgumentParser(
+        description="CloudGuard-B Drift Simulator",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["single", "proactive"],
+        default="single",
+        help="'single' injects one drift; 'proactive' runs the 20-tick Amber sequence",
+    )
+    parser.add_argument("--type", default="OIDC_TRUST_BREACH",
+                        help="Drift type (single mode only)")
+    parser.add_argument("--resource", required=True,
+                        help="Resource ID / ARN to target")
+    parser.add_argument("--severity", default="CRITICAL",
+                        help="Severity (single mode only)")
     parser.add_argument("--verbose", action="store_true", default=False)
+    parser.add_argument("--tick-delay", type=float, default=0.4,
+                        help="Sleep seconds between ticks in proactive mode")
+    parser.add_argument("--redis-url", default="redis://localhost:6379")
     args = parser.parse_args()
-    
-    asyncio.run(inject_drift(args.type, args.resource, args.severity, args.verbose))
+
+    if args.mode == "proactive":
+        asyncio.run(
+            inject_proactive(
+                resource_id=args.resource,
+                tick_delay=args.tick_delay,
+                redis_url=args.redis_url,
+            )
+        )
+    else:
+        asyncio.run(
+            inject_drift(args.type, args.resource, args.severity, args.verbose)
+        )
