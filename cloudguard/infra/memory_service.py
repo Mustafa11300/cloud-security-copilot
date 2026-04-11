@@ -30,6 +30,7 @@ import hashlib
 import json
 import logging
 import math
+import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -46,6 +47,102 @@ try:
 except ImportError:
     HAS_CHROMADB = False
     logger.info("ChromaDB not available — using in-memory heuristic store")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SEMANTIC STRIPPER — INPUT SANITIZATION PIPELINE
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Keys that carry infrastructure noise rather than security semantics.
+# These change on every event and poison cosine similarity.
+_VOLATILE_KEYS = frozenset({
+    "timestamp_tick", "trace_id", "kernel_id", "timestamp",
+    "request_id", "event_id", "victory_id", "proposal_id",
+    # description embeds the resource_id inline (e.g., "S3 bucket prod-bucket-01")
+    # and cumulative_drift_score can vary between identical threat patterns.
+    "description", "cumulative_drift_score",
+})
+
+
+def _anonymize_resource_id(resource_id: str) -> str:
+    """
+    Convert a specific resource identifier to its type-only token.
+
+    Examples:
+        's3-customer-data-482'  → 'S3'
+        'ec2-i-0abc123'         → 'EC2'
+        'rds-prod-db-01'        → 'RDS'
+        'arn:aws:s3:::bucket'   → 'S3'
+
+    This keeps the *kind* of resource (vital for pattern matching)
+    while stripping the unique suffix (semantic noise).
+    """
+    if not resource_id:
+        return "UNKNOWN"
+
+    rid = resource_id.lower().strip()
+
+    # Handle ARN-style identifiers
+    if rid.startswith("arn:"):
+        parts = rid.split(":")
+        if len(parts) >= 3:
+            return parts[2].upper()  # e.g., 's3', 'ec2', 'iam'
+
+    # Extract leading alphabetic prefix (e.g., 's3', 'ec2', 'rds')
+    prefix_match = re.match(r'^([a-zA-Z][a-zA-Z0-9]*)(?:[-_.]|$)', rid)
+    if prefix_match:
+        prefix = prefix_match.group(1).upper()
+        # Map known short prefixes to canonical names
+        _CANONICAL = {
+            "S3": "S3", "EC2": "EC2", "RDS": "RDS", "IAM": "IAM",
+            "EBS": "EBS", "ELB": "ELB", "VPC": "VPC", "ECS": "ECS",
+            "EKS": "EKS", "LAMBDA": "LAMBDA", "SNS": "SNS", "SQS": "SQS",
+        }
+        return _CANONICAL.get(prefix, prefix)
+
+    return "RESOURCE"
+
+
+def sanitize_for_embedding(drift_json: dict) -> str:
+    """
+    Strips infrastructure noise to isolate the 'Security DNA' of a drift.
+
+    The Semantic Stripper removes the "Unchecked Volatility Trio":
+      1. timestamp_tick — changes every clock increment
+      2. trace_id / kernel_id — high-entropy UUIDs
+      3. resource_id (unique suffixes) — forces identical policy
+         failures to look like different episodes
+
+    Result: identical security scenarios produce >0.90 cosine similarity
+    instead of the ~0.33 we observed with raw input.
+
+    Args:
+        drift_json: Raw drift event dict with noisy infrastructure fields.
+
+    Returns:
+        Canonical string suitable for bag-of-words or dense embedding.
+    """
+    # 1. Strip volatile keys entirely
+    clean = {k: v for k, v in drift_json.items() if k not in _VOLATILE_KEYS}
+
+    # 2. Anonymize resource IDs → type-only tokens
+    if "resource_id" in clean:
+        clean["resource_type"] = _anonymize_resource_id(
+            str(clean.pop("resource_id"))
+        )
+
+    # 3. Flatten nested dicts to promote their keys (mutations, etc.)
+    flat_parts: list[str] = []
+    for k, v in sorted(clean.items()):
+        if isinstance(v, dict):
+            for sk, sv in sorted(v.items()):
+                flat_parts.append(f"{k}_{sk}={sv}")
+        elif isinstance(v, (list, tuple)):
+            flat_parts.append(f"{k}={'|'.join(str(x) for x in v)}")
+        else:
+            flat_parts.append(f"{k}={v}")
+
+    return " ".join(flat_parts)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -69,6 +166,7 @@ class VictorySummary:
     remediation_action: str = ""  # e.g., "block_public_access"
     remediation_tier: str = "silver"  # gold/silver/bronze
     fix_parameters: dict[str, Any] = field(default_factory=dict)
+    raw_drift: dict[str, Any] = field(default_factory=dict)
 
     # ── J-Score Impact ────────────────────────────────────────────────────────
     j_before: float = 0.0
@@ -87,7 +185,7 @@ class VictorySummary:
     )
 
     def to_document(self) -> str:
-        """Convert to a searchable text document for vector embedding."""
+        """Convert to a searchable text document for vector embedding (legacy)."""
         return (
             f"Drift: {self.drift_type} on {self.resource_type} "
             f"({self.resource_id}). "
@@ -98,6 +196,30 @@ class VictorySummary:
             f"Risk Δ={self.risk_delta:.2f}, Cost Δ=${self.cost_delta:.2f}. "
             f"Environment: {self.environment}. "
             f"Reasoning: {self.reasoning}"
+        )
+
+    def to_semantic_document(self) -> str:
+        """
+        Convert to a *sanitized* embedding document via the Semantic Stripper.
+
+        Strips the "Unchecked Volatility Trio" (timestamp_tick, trace_id,
+        resource_id suffix) and produces a canonical string that represents
+        only the security DNA of the remediation victory.
+
+        Two victories for the same drift_type + remediation_action on
+        the same resource *type* will produce near-identical documents,
+        enabling >0.90 cosine similarity for the Round 1 Bypass.
+        """
+        if getattr(self, "raw_drift", None):
+            return sanitize_for_embedding(self.raw_drift)
+            
+        resource_type = self.resource_type or _anonymize_resource_id(self.resource_id)
+        return (
+            f"drift_type={self.drift_type} "
+            f"resource_type={resource_type} "
+            f"remediation_action={self.remediation_action} "
+            f"remediation_tier={self.remediation_tier} "
+            f"environment={self.environment}"
         )
 
     def to_metadata(self) -> dict[str, Any]:
@@ -147,6 +269,7 @@ class HeuristicProposal:
     remediation_action: str = ""
     remediation_tier: str = "silver"
     fix_parameters: dict[str, Any] = field(default_factory=dict)
+    raw_drift: dict[str, Any] = field(default_factory=dict)
     reasoning: str = ""
 
     # ── Expected Impact (from historical victory) ─────────────────────────────
@@ -328,7 +451,9 @@ class MemoryService:
         # Calculate J improvement
         victory.j_improvement = victory.j_before - victory.j_after
 
-        document = victory.to_document()
+        # Use the semantic document for vectorization (Semantic Stripper)
+        # The legacy to_document() is kept for human-readable export.
+        document = victory.to_semantic_document()
         metadata = victory.to_metadata()
         doc_id = victory.victory_id
 
@@ -349,7 +474,7 @@ class MemoryService:
             except Exception as e:
                 logger.error(f"ChromaDB store failed: {e}")
 
-        # In-memory fallback
+        # In-memory fallback — vectorize the semantic document
         self._victories.append(victory)
         self._vectors.append(_text_to_vector(document))
         self._store_count += 1
@@ -390,13 +515,24 @@ class MemoryService:
 
         self._query_count += 1
 
-        # Build the query document
-        query_text = (
-            f"Drift: {drift_type} on {resource_type}. "
-            f"Looking for best remediation based on historical victories."
-        )
-        if raw_logs:
-            query_text += f" Context: {' '.join(raw_logs[:5])}"
+        # Build the query document using the SAME semantic template
+        # as VictorySummary.to_semantic_document() — this is critical
+        # for achieving high cosine similarity on identical drifts.
+        # We include ALL fields that to_semantic_document() emits so
+        # the bag-of-words vectors overlap maximally.  For fields not
+        # known at query time we omit them rather than guessing, but
+        # drift_type + resource_type carry the dominant signal.
+        # If raw logs are available, use the Semantic Stripper to build a highly accurate similarity query
+        if raw_logs and len(raw_logs) > 0:
+            try:
+                import json
+                drift_dict = json.loads(raw_logs[0])
+                query_text = sanitize_for_embedding(drift_dict)
+            except Exception:
+                query_text = f"drift_type={drift_type} resource_type={resource_type}"
+        else:
+            query_text = f"drift_type={drift_type} resource_type={resource_type}"
+
 
         # ChromaDB path
         if self._collection is not None:

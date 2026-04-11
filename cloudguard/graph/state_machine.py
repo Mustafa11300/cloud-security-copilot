@@ -456,6 +456,8 @@ class KernelOrchestrator:
                 state.sentry_proposal.reasoning
             )
 
+            import time
+            time.sleep(6)  # Avoid 429 Rate Limits from Google GenAI free tier
             state.consultant_proposal = self._consultant.propose(
                 swarm_state, state.resource_context
             )
@@ -652,6 +654,7 @@ class KernelOrchestrator:
                 reasoning=state.final_decision.reasoning
                 if state.final_decision
                 else "",
+                raw_drift=drift.raw_logs[0] if drift.raw_logs else {},
             )
             self._memory.store_victory(victory)
 

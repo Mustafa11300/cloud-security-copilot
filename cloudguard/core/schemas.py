@@ -712,15 +712,17 @@ class RemediationCommand(BaseModel):
         default_factory=dict,
         description="Parameters for the remediation action"
     )
+    python_code: str = Field(
+        default="",
+        description="Executable Python healing function (e.g., boto3, idempotent script)"
+    )
     rollback_parameters: dict[str, Any] = Field(
         default_factory=dict,
         description="Parameters to undo this command (for branch rollback)"
     )
     estimated_risk_reduction: float = Field(
         default=0.0,
-        ge=0.0,
-        le=100.0,
-        description="Expected risk score reduction after execution"
+        description="Expected risk score reduction after execution (can be % or ALE $)"
     )
     estimated_cost_impact: float = Field(
         default=0.0,

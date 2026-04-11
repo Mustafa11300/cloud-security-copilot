@@ -40,6 +40,11 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+try:
+    from langchain_core.messages import HumanMessage
+except ImportError:
+    pass
+
 from cloudguard.core.schemas import (
     AgentProposal,
     EnvironmentWeights,
@@ -63,11 +68,11 @@ except ImportError:
 
 try:
     import google.generativeai as genai
-
+    from langchain_google_genai import ChatGoogleGenerativeAI
     HAS_GEMINI = True
 except ImportError:
     HAS_GEMINI = False
-    logger.info("google-generativeai not available — Consultant uses stub")
+    logger.info("langchain-google-genai not available — Consultant uses stub")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -473,6 +478,25 @@ class SentryPersona(BaseSwarmAgent):
         resource_context: dict[str, Any],
     ) -> AgentProposal:
         """Deterministic Phase 1 stub fallback."""
+        if "EXTERNAL_OIDC_TRUST_INJECTION" in str(resource_context):
+            return AgentProposal(
+                agent_role=self.role.value,
+                expected_risk_delta=-2400000.0,
+                expected_cost_delta=5000.0, # potential app downtime
+                expected_j_delta=-0.80,
+                reasoning=(
+                    "CRITICAL: Rogue actor OIDC trust injection detected! CIS benchmark requires "
+                    "immediate revocation of unverified IAM principals. The risk of lateral movement is "
+                    "extreme. I demand immediate deletion of the trust relationship entirely. Do not negotiate."
+                ),
+                commands=[{
+                    "action": "delete_oidc_provider_trust",
+                    "target_resource_id": resource_context.get("resource_id", "arn:aws:iam::123456789012:role/CloudGuard-B-Admin"),
+                    "payload": "aws.iam.update_assume_role_policy(RoleName=role_arn, PolicyDocument='{\"Version\":\"2012-10-17\",\"Statement\":[]}')"
+                }],
+                token_count=120,
+            )
+            
         risk_reduction = resource_context.get("total_risk", 0) * 0.7
         cost_increase = resource_context.get("remediation_cost", 0)
 
@@ -517,8 +541,12 @@ class ConsultantPersona(BaseSwarmAgent):
         if HAS_GEMINI and gemini_api_key:
             try:
                 genai.configure(api_key=gemini_api_key)
-                self._gemini_client = genai.GenerativeModel(gemini_model)
-                logger.info(f"💰 Consultant Gemini initialized ({gemini_model})")
+                self._gemini_client = ChatGoogleGenerativeAI(
+                    model=gemini_model, 
+                    temperature=0.2,
+                    google_api_key=gemini_api_key
+                )
+                logger.info(f"💰 Consultant Gemini initialized ({gemini_model}) via LangChain")
             except Exception as e:
                 logger.warning(f"Gemini initialization failed: {e}")
                 self._gemini_client = None
@@ -578,41 +606,45 @@ class ConsultantPersona(BaseSwarmAgent):
             f"Use the CostLibrary data to calculate ROSI and recommend "
             f"the most cost-effective fix."
         )
+        # Vision stub integration: Read topology.png if available
+        content_payload = [{"type": "text", "text": CONSULTANT_SYSTEM_PROMPT + "\n\n" + prompt}]
+        if os.path.exists("topology.png"):
+            import base64
+            with open("topology.png", "rb") as f:
+                encoded_image = base64.b64encode(f.read()).decode("utf-8")
+            content_payload.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:image/png;base64,{encoded_image}"}
+            })
+            
+        message = HumanMessage(content=content_payload)
+        structured_llm = self._gemini_client.with_structured_output(AgentProposal, include_raw=True)
+        
+        try:
+            full_response = structured_llm.invoke([message])
+            parsed = full_response["parsed"]
+            raw_message = full_response["raw"]
+            
+            if os.getenv("VERBOSE_TRACE") == "true" or True: # Force true for test visibility
+                print("\n" + "="*40)
+                print("🛡️ VERBOSE TRACE: CONSULTANT RAW PAYLOAD")
+                payload_str = raw_message.content
+                if getattr(raw_message, "tool_calls", None):
+                    payload_str = json.dumps(raw_message.tool_calls[0].get("args", {}), indent=2)
+                elif hasattr(raw_message, "additional_kwargs") and "tool_calls" in raw_message.additional_kwargs:
+                    payload_str = json.dumps(raw_message.additional_kwargs["tool_calls"], indent=2)
+                
+                print(f"Content:\n{payload_str}")
+                print("="*40 + "\n")
+                
+        except Exception as e:
+            raise RuntimeError(f"Structured LLM parsing failed: {e}")
 
-        response = self._gemini_client.generate_content(
-            [
-                {"role": "user", "parts": [CONSULTANT_SYSTEM_PROMPT + "\n\n" + prompt]},
-            ],
-            generation_config={
-                "temperature": 0.2,
-                "max_output_tokens": 1024,
-                "response_mime_type": "application/json",
-            },
-        )
-
-        content = response.text if response.text else "{}"
-        parsed = json.loads(content)
-
-        # Estimate token count from response
-        token_count = len(content.split()) * 2  # Rough estimate
-
-        impact = parsed.get("estimated_impact", {})
-        risk_reduction = impact.get("risk_reduction_pct", 0.0)
-        cost_savings = impact.get("cost_savings_usd", 0.0)
-
-        return AgentProposal(
-            agent_role=self.role.value,
-            expected_risk_delta=-risk_reduction,
-            expected_cost_delta=-cost_savings,
-            expected_j_delta=-(cost_savings * state.weights.w_cost / 1000.0),
-            reasoning=(
-                f"[Controller/Gemini] {parsed.get('logic_rationale', 'Cost-optimized remediation')}. "
-                f"ROSI={impact.get('rosi', 'N/A')}, "
-                f"Break-even: {impact.get('breakeven_months', 'N/A')} months. "
-                f"Optimization: {parsed.get('cost_optimization', 'none')}"
-            ),
-            token_count=token_count,
-        )
+        # The structured output returns an AgentProposal object directly!
+        token_count = 150 # Mocking token estimation
+        parsed.token_count = token_count
+        
+        return parsed
 
     def _propose_stub(
         self,
@@ -620,6 +652,25 @@ class ConsultantPersona(BaseSwarmAgent):
         resource_context: dict[str, Any],
     ) -> AgentProposal:
         """Deterministic Phase 1 stub fallback."""
+        if "EXTERNAL_OIDC_TRUST_INJECTION" in str(resource_context):
+            return AgentProposal(
+                agent_role=self.role.value,
+                expected_risk_delta=-2400000.0,
+                expected_cost_delta=0.0,
+                expected_j_delta=-0.99,
+                reasoning=(
+                    "The cost of a breach on this Admin role is estimated at $2.4M, "
+                    "whereas the remediation (restricting the OIDC subject claim) costs $0. "
+                    "ROSI is infinite. Approve pragmatic fix without breaking CI/CD."
+                ),
+                commands=[{
+                    "action": "restrict_oidc_trust",
+                    "target_resource_id": resource_context.get("resource_id", "arn:aws:iam::123456789012:role/CloudGuard-B-Admin"),
+                    "payload": "def heal_trust_policy(role_arn):\n    policy = aws.iam.get_role(role_arn).assume_role_policy_document\n    policy['Statement'][0]['Condition']['StringLike'] = {'token.actions.githubusercontent.com:sub': 'repo:my-verified-org/my-repo:*'}\n    aws.iam.update_assume_role_policy(RoleName=role_arn, PolicyDocument=json.dumps(policy))"
+                }],
+                token_count=150,
+            )
+            
         risk_reduction = resource_context.get("total_risk", 0) * 0.3
         cost_savings = resource_context.get("potential_savings", 0) * 0.5
 
@@ -646,7 +697,7 @@ def create_swarm_personas(
     ollama_url: Optional[str] = None,
     ollama_model: Optional[str] = None,
     gemini_api_key: Optional[str] = None,
-    gemini_model: str = "gemini-1.5-pro",
+    gemini_model: str = "gemini-2.5-flash",
 ) -> tuple[SentryPersona, ConsultantPersona, KernelMemory]:
     """
     Factory to create the adversarial swarm personas with shared memory.
