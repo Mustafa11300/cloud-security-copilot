@@ -85,14 +85,16 @@ TOPOLOGY: dict[str, str] = {}
 # ═══════════════════════════════════════════════════════════════════════════════
 
 _EVENT_TYPE_MAP: dict[str, str] = {
-    "DRIFT":            "Drift",
-    "REMEDIATION":      "Remediation",
-    "NEGOTIATION":      "Negotiation",
-    "HEARTBEAT":        "Heartbeat",
-    "TICKER_UPDATE":      "TickerUpdate",
-    "TOPOLOGY_SYNC":      "TopologySync",
-    "SWARM_COOLING_DOWN": "SwarmCoolingDown",
-    "FORECAST_SIGNAL":    "ForecastSignal",
+    "DRIFT":                "Drift",
+    "REMEDIATION":          "Remediation",
+    "NEGOTIATION":          "Negotiation",
+    "HEARTBEAT":            "Heartbeat",
+    "TICKER_UPDATE":          "TickerUpdate",
+    "TOPOLOGY_SYNC":          "TopologySync",
+    "SWARM_COOLING_DOWN":     "SwarmCoolingDown",
+    "FORECAST_SIGNAL":        "ForecastSignal",
+    # Phase 4: Threat Horizon Overlay (attack path visualization)
+    "THREAT_HORIZON_OVERLAY": "ThreatHorizonOverlay",
 }
 
 
@@ -176,10 +178,13 @@ def _build_ui_event(raw: dict[str, Any]) -> dict[str, Any]:
 
     elif raw_type == "FORECAST_SIGNAL":
         # Phase 4: Proactive Intelligence — Amber Alert from ThreatForecaster
+        signal_type = data.get("type", "Advisory")
+        dissipation = data.get("dissipation")
+
         message_body = {
             "target":          data.get("target", "unknown"),
             "probability":     data.get("probability", 0.0),
-            "type":            data.get("type", "Advisory"),
+            "type":            signal_type,
             "horizon":         data.get("horizon", "5 ticks"),
             "predicted_drift": data.get("predicted_drift", "UNKNOWN"),
             "is_shadow_ai":    data.get("is_shadow_ai", False),
@@ -187,11 +192,46 @@ def _build_ui_event(raw: dict[str, Any]) -> dict[str, Any]:
             "recon_chain":     data.get("recon_chain"),
             "confidence_lo":   data.get("confidence_lo", 0.0),
             "confidence_hi":   data.get("confidence_hi", 0.0),
+            # Phase 4 extended fields
+            "dissipation":     dissipation,   # Non-null only on Dissipated signals
         }
-        # Mark target resource as AMBER in topology
+
         target = data.get("target")
-        if target and data.get("type") == "Amber_Alert":
-            _update_topology(target, "CRITICAL")
+        if target:
+            if signal_type == "Amber_Alert":
+                # Mark target resource as AMBER/CRITICAL in topology
+                _update_topology(target, "CRITICAL")
+            elif signal_type == "Dissipated":
+                # Amber Alert dissipated — return target to YELLOW (watch state)
+                TOPOLOGY[target] = "YELLOW"
+                logger.info(
+                    f"🟢 Topology: {target} returned to YELLOW after dissipation "
+                    f"(was CRITICAL, P dropped below 0.75)"
+                )
+
+    elif raw_type == "THREAT_HORIZON_OVERLAY":
+        # Phase 4: Frontend attack-path visualization overlay
+        # Passes transitive_nodes to the War Room UI to draw orange edges
+        message_body = {
+            "alert_id":         data.get("alert_id", ""),
+            "target":           data.get("target", "unknown"),
+            "probability":      data.get("probability", 0.0),
+            "color":            data.get("color", "orange"),
+            "recon_pattern":    data.get("recon_pattern", ""),
+            "transitive_nodes": data.get("transitive_nodes", []),
+            "label":            data.get("label", ""),
+            "timestamp":        data.get("timestamp", ""),
+        }
+        # Mark all transitive node resource_ids in topology as AMBER
+        for node in data.get("transitive_nodes", []):
+            rid = node.get("resource_id") or node.get("node_id")
+            if rid and rid not in ("entry-point", "pivot-resource", "target-asset"):
+                if TOPOLOGY.get(rid) not in ("RED", "CRITICAL"):
+                    TOPOLOGY[rid] = "AMBER"
+        logger.info(
+            f"🟠 ThreatHorizonOverlay: {data.get('alert_id')} — "
+            f"{len(data.get('transitive_nodes', []))} attack-path nodes painted orange"
+        )
 
     elif raw_type == "HEARTBEAT":
         message_body = {

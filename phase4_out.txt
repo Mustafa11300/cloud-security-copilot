@@ -1,0 +1,41 @@
+﻿
+cmd : Traceback (most recent call last):
+At line:1 char:1
++ cmd /c "cd /d e:\newSrijan\cloud-security-copilot && 
+venv\Scripts\pyt ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Traceback (mo 
+   st recent call last)::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  File "e:\newSrijan\cloud-security-copilot\tests\test_phas
+e4_validation_suite.py", line 1123, in <module>
+    asyncio.run(_run_all_scenarios())
+  File "C:\Users\acer\AppData\Local\Programs\Python\Python3
+11\Lib\asyncio\runners.py", line 190, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\acer\AppData\Local\Programs\Python\Python3
+11\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\acer\AppData\Local\Programs\Python\Python3
+11\Lib\asyncio\base_events.py", line 653, in 
+run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "e:\newSrijan\cloud-security-copilot\tests\test_phas
+e4_validation_suite.py", line 973, in _run_all_scenarios
+    _emit(HEAVY_DIV)
+  File "e:\newSrijan\cloud-security-copilot\tests\test_phas
+e4_validation_suite.py", line 80, in _emit
+    print(line)
+  File "C:\Users\acer\AppData\Local\Programs\Python\Python3
+11\Lib\encodings\cp1252.py", line 19, in encode
+    return 
+codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode 
+characters in position 0-77: character maps to <undefined>

@@ -79,6 +79,12 @@ SOVEREIGN_WINDOW_S    = 60    # Total HITL window
 CRITICAL_ALERT_S      = 50    # T+50 → CRITICAL_COUNTDOWN pulse
 INTER_BLOCK_DELAY_S   = 15.0  # Delay between narrative blocks (T+0, T+15, T+30)
 
+# ─── Predictive Fast-Pass (Sovereign Gate) ────────────────────────────────────
+# If P ≥ 0.90 for Shadow AI, reduce review window from 60s → 10s
+PREDICTIVE_FAST_PASS_THRESHOLD = 0.90
+PREDICTIVE_FAST_PASS_WINDOW_S  = 10    # Accelerated review window
+FAST_PASS_WASTE_SAVINGS_USD     = 250.0 # Estimated operational waste saved per fast-pass
+
 # ─── Citation tags ────────────────────────────────────────────────────────────
 CITATIONS = {
     "public_exposure":        "[CIS 2.1.2]",
@@ -136,6 +142,12 @@ class SwarmContext:
     # Remediation command (for Sovereign Gate)
     proposed_action: str = "remediate"
     tier:            str = "silver"
+
+    # ── Phase 4 Predictive Integration ───────────────────────────────────────
+    # Forecast P-score from ThreatForecaster (drives Fast-Pass logic)
+    forecast_probability: float = 0.0      # LSTM P ∈ [0, 1]; 0.0 = no forecast
+    is_shadow_ai_forecast: bool = False    # True if forecast is for Shadow AI
+    forecast_alert_id:    str   = ""       # OMEGA-NNN from DissipationHandler
 
 
 @dataclass
@@ -408,9 +420,37 @@ def _build_synthesis_block(ctx: SwarmContext) -> NarrativeChunk:
     """
     T+30s — The Orchestrator's Synthesis & finalized J Score.
     Triggers the 60-second countdown. Contains full math_trace.
+
+    Phase 4 Update — J_forecast formula:
+      J_forecast = min Σ (w_R · P · R_i + w_C · C_i)
+      The AI's 'Pre-Crime' proposal is strictly proportional to the
+      certainty of the threat (LSTM probability P). If P is low,
+      the weighted risk term is dampened, preventing over-investment
+      in unlikely threats.
     """
     math_trace = _compute_math_trace(ctx)
     roi        = _compute_roi_summary(ctx)
+
+    # ── Phase 4: J_forecast with probability weighting ───────────────────────
+    P = ctx.forecast_probability  # LSTM prediction probability (0 if no forecast)
+    j_forecast_str = ""
+    if P > 0.0:
+        # J_forecast = min Σ (w_R · P · R_i + w_C · C_i)
+        # Simplified single-resource: R_i ≈ (j_before), C_i ≈ w_cost * j_before
+        j_forecast = (ctx.w_risk * P * ctx.j_before) + (ctx.w_cost * ctx.j_before)
+        j_forecast_str = (
+            f"Predictive J-Forecast (Pre-Crime): "
+            f"J_fc = w_R·P·R + w_C·C = "
+            f"{ctx.w_risk:.2f}·{P:.2f}·{ctx.j_before:.4f} + "
+            f"{ctx.w_cost:.2f}·{ctx.j_before:.4f} = {j_forecast:.4f}. "
+            f"LSTM threat certainty P={P:.1%} governs remediation proportionality. "
+        )
+        # Update math_trace with J_forecast
+        math_trace["equilibrium"]["j_forecast"] = round(j_forecast, 6)
+        math_trace["equilibrium"]["p_forecast"]  = round(P, 4)
+        math_trace["equilibrium"]["formula_forecast"] = (
+            "J_forecast = min Σ (w_R · P · R_i + w_C · C_i)"
+        )
 
     status_label = {
         "synthesized":    "Active Editor synthesized a Pareto-optimal path",
@@ -423,6 +463,7 @@ def _build_synthesis_block(ctx: SwarmContext) -> NarrativeChunk:
     synthesis_text = ctx.synthesis_reasoning or (
         f"Orchestrator Synthesis — {status_label}. "
         f"Equilibrium Function J = min Σ (w_R·R̂ᵢ + w_C·Ĉᵢ). "
+        f"{j_forecast_str}"
         f"Weights: w_R={ctx.w_risk:.3f} (risk), w_C={ctx.w_cost:.3f} (cost). "
         f"J-Score: {ctx.j_before:.4f} → {ctx.j_after:.4f} "
         f"(Δ = {ctx.j_after - ctx.j_before:+.4f}, "
@@ -433,6 +474,11 @@ def _build_synthesis_block(ctx: SwarmContext) -> NarrativeChunk:
         f"[NSGA-II, Deb et al. (2002)] [NIST AI RMF 1.0 — Govern 1.1]"
     )
 
+    # Determine effective countdown (Fast-Pass may shorten it)
+    effective_window = SOVEREIGN_WINDOW_S
+    if P >= PREDICTIVE_FAST_PASS_THRESHOLD and ctx.is_shadow_ai_forecast:
+        effective_window = PREDICTIVE_FAST_PASS_WINDOW_S
+
     return NarrativeChunk(
         chunk_id          = f"chunk-{uuid.uuid4().hex[:8]}",
         decision_id       = ctx.decision_id,
@@ -440,12 +486,13 @@ def _build_synthesis_block(ctx: SwarmContext) -> NarrativeChunk:
         heading           = (
             f"⚖️ Active Editor — J={ctx.j_after:.4f}  "
             f"({(ctx.j_before - ctx.j_after) / max(ctx.j_before, 1e-9) * 100:.1f}% governed)"
+            + (f" ⚡ FAST-PASS (P={P:.0%})" if P >= PREDICTIVE_FAST_PASS_THRESHOLD and ctx.is_shadow_ai_forecast else "")
         ),
         body              = synthesis_text,
         citation          = "[NSGA-II, Deb (2002)] [NIST AI RMF] [CIS Benchmark v8.0]",
         is_final          = True,
         countdown_active  = True,
-        seconds_remaining = SOVEREIGN_WINDOW_S,
+        seconds_remaining = effective_window,
         roi_summary       = roi,
         math_trace        = math_trace,
         j_before          = ctx.j_before,
@@ -573,12 +620,20 @@ class SovereignGate:
         self._veto_reason: str = ""
         self._task:        Optional[asyncio.Task]  = None
 
+        # ── Phase 4: Predictive Fast-Pass state ──────────────────────────────
+        self._fast_pass_triggered: bool = False
+        self._fast_pass_original_window: int = window_seconds
+
     # ── Public interface ──────────────────────────────────────────────────────
 
     async def arm(self, ctx: SwarmContext) -> None:
         """
         Arm the gate for the given SwarmContext.
         Starts the countdown background task and returns immediately.
+
+        Phase 4 — Predictive Fast-Pass:
+          If ctx.forecast_probability ≥ 0.90 AND ctx.is_shadow_ai_forecast,
+          the review window is immediately shortened from 60s → 10s.
         """
         if self._task and not self._task.done():
             logger.warning(
@@ -587,16 +642,40 @@ class SovereignGate:
             )
             self._task.cancel()
 
-        self._active_ctx  = ctx
-        self._veto_event  = asyncio.Event()
-        self._veto_reason = ""
-        self._task        = asyncio.create_task(
+        self._active_ctx           = ctx
+        self._veto_event           = asyncio.Event()
+        self._veto_reason          = ""
+        self._fast_pass_triggered  = False
+
+        # ── Predictive Fast-Pass: check before arming ─────────────────────
+        effective_window = self._fast_pass_original_window
+        if (
+            ctx.forecast_probability >= PREDICTIVE_FAST_PASS_THRESHOLD
+            and ctx.is_shadow_ai_forecast
+        ):
+            effective_window = PREDICTIVE_FAST_PASS_WINDOW_S
+            self._fast_pass_triggered = True
+            self._window_s = PREDICTIVE_FAST_PASS_WINDOW_S
+            # alert at T+8 for the shortened window
+            self._alert_s  = max(self._alert_s, PREDICTIVE_FAST_PASS_WINDOW_S - 2)
+            logger.warning(
+                f"⚡ SovereignGate FAST-PASS: P={ctx.forecast_probability:.2%} "
+                f"≥ {PREDICTIVE_FAST_PASS_THRESHOLD:.0%} Shadow AI. "
+                f"Window reduced {self._fast_pass_original_window}s → {PREDICTIVE_FAST_PASS_WINDOW_S}s. "
+                f"Estimated operational waste avoided: ${FAST_PASS_WASTE_SAVINGS_USD:.0f}."
+            )
+        else:
+            self._window_s = self._fast_pass_original_window
+            self._alert_s  = CRITICAL_ALERT_S
+
+        self._task = asyncio.create_task(
             self._countdown_loop(ctx),
             name=f"sovereign_gate_{ctx.decision_id}",
         )
         logger.info(
             f"⏳ SovereignGate ARMED: {ctx.decision_id}  "
-            f"({self._window_s}s window, alert at T+{self._alert_s}s)"
+            f"({self._window_s}s window, alert at T+{self._alert_s}s, "
+            f"fast_pass={self._fast_pass_triggered})"
         )
 
     def veto(self, reason: str = "Human operator override") -> None:
@@ -623,7 +702,16 @@ class SovereignGate:
     async def _countdown_loop(self, ctx: SwarmContext) -> None:
         """
         Background coroutine: ticks every second, emits events, handles veto/auto.
+
+        Phase 4 — Predictive Fast-Pass:
+          If fast_pass was triggered at arm(), the loop runs for only
+          PREDICTIVE_FAST_PASS_WINDOW_S (10s) instead of 60s.
+          A Fast-Pass audit entry is emitted at T+0 of the shortened loop.
         """
+        # Emit Fast-Pass audit event at the start of a fast-pass gate
+        if self._fast_pass_triggered:
+            await self._emit_fast_pass_event(ctx)
+
         for elapsed in range(self._window_s + 1):
             remaining = self._window_s - elapsed
 
@@ -632,7 +720,7 @@ class SovereignGate:
                 await self._emit_veto(ctx, remaining)
                 return
 
-            # ── T+50 → CRITICAL alert ──────────────────────────────────────
+            # ── CRITICAL alert (T+50 normal, T+8 fast-pass) ───────────────
             if elapsed == self._alert_s:
                 await self._emit_critical_alert(ctx, remaining)
 
@@ -656,7 +744,7 @@ class SovereignGate:
                 except asyncio.CancelledError:
                     return
 
-        # ── T+60 : AUTO-EXECUTE ────────────────────────────────────────────
+        # ── Auto-execute (T+60 normal, T+10 fast-pass) ────────────────────
         await self._emit_auto_execute(ctx)
 
     async def _broadcast(self, payload: dict) -> None:
@@ -706,14 +794,79 @@ class SovereignGate:
             },
         }
 
+    async def _emit_fast_pass_event(self, ctx: SwarmContext) -> None:
+        """
+        Phase 4 — Predictive Fast-Pass Audit Event.
+        Emitted at the start of a shortened (10s) sovereign window.
+        Logs: 'Predictive Fast-Pass triggered: High-confidence Shadow AI
+               (P=X). Accelerating remediation to save estimated $250 in
+               operational waste.'
+        """
+        P = ctx.forecast_probability
+        evt = {
+            "event_id":       f"evt-{uuid.uuid4().hex[:8]}",
+            "tick_timestamp": datetime.now(timezone.utc).isoformat(),
+            "event_type":     "NarrativeChunk",
+            "agent_id":       "sovereign_gate",
+            "trace_id":       ctx.decision_id,
+            "w_R": ctx.w_risk, "w_C": ctx.w_cost, "j_score": ctx.j_before,
+            "message_body": {
+                "chunk_type":        "fast_pass",
+                "countdown_subtype": "predictive_fast_pass",
+                "heading":           (
+                    f"⚡ PREDICTIVE FAST-PASS — High-Confidence Shadow AI (P={P:.0%})"
+                ),
+                "body": (
+                    f"Predictive Fast-Pass triggered: High-confidence Shadow AI "
+                    f"(P={P:.4f}). "
+                    f"LSTM forecast probability ≥ {PREDICTIVE_FAST_PASS_THRESHOLD:.0%} threshold. "
+                    f"Human review window accelerated: "
+                    f"{self._fast_pass_original_window}s → {PREDICTIVE_FAST_PASS_WINDOW_S}s. "
+                    f"Accelerating remediation to save estimated "
+                    f"${FAST_PASS_WASTE_SAVINGS_USD:.0f} in operational waste. "
+                    f"Decision: {ctx.decision_id}. "
+                    f"Resource: {ctx.resource_id}. "
+                    f"Forecast alert: {ctx.forecast_alert_id}. "
+                    f"[NIST AI RMF — Govern 1.1 — Adaptive Governance]"
+                ),
+                "citation":         "[NIST AI RMF — Govern 1.1] [Predictive Remediation SLA]",
+                "is_final":         False,
+                "countdown_active": True,
+                "is_critical_alert": False,
+                "is_fast_pass":      True,
+                "seconds_remaining": PREDICTIVE_FAST_PASS_WINDOW_S,
+                "j_before":         ctx.j_before,
+                "j_after":          ctx.j_after,
+                "j_delta":          round(ctx.j_after - ctx.j_before, 6),
+                "fast_pass_meta": {
+                    "forecast_probability":  round(P, 4),
+                    "threshold":             PREDICTIVE_FAST_PASS_THRESHOLD,
+                    "original_window_s":     self._fast_pass_original_window,
+                    "accelerated_window_s":  PREDICTIVE_FAST_PASS_WINDOW_S,
+                    "waste_savings_usd":     FAST_PASS_WASTE_SAVINGS_USD,
+                    "forecast_alert_id":     ctx.forecast_alert_id,
+                },
+                "roi_summary":  None,
+                "math_trace":   None,
+            },
+        }
+        logger.warning(
+            f"⚡ SovereignGate FAST-PASS AUDIT: {ctx.decision_id} — "
+            f"P={P:.2%}, window={PREDICTIVE_FAST_PASS_WINDOW_S}s, "
+            f"waste_saved=${FAST_PASS_WASTE_SAVINGS_USD:.0f}"
+        )
+        await self._broadcast(evt)
+
     async def _emit_tick(self, ctx: SwarmContext, remaining: int) -> None:
+        fp_note = f" [⚡ Fast-Pass active]" if self._fast_pass_triggered else ""
         evt = self._make_countdown_event(
             ctx, remaining, "tick",
-            heading = f"⏱ Sovereign Gate — {remaining}s remaining",
+            heading = f"⏱ Sovereign Gate — {remaining}s remaining{fp_note}",
             body    = (
                 f"Awaiting human veto for decision {ctx.decision_id}. "
                 f"Proposed action: {ctx.proposed_action} on {ctx.resource_id}. "
                 f"Auto-execution in {remaining}s."
+                + (f" [Predictive Fast-Pass: P={ctx.forecast_probability:.0%}]" if self._fast_pass_triggered else "")
             ),
         )
         await self._broadcast(evt)
