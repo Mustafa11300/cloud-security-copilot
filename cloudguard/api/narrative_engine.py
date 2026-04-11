@@ -1048,3 +1048,269 @@ def build_swarm_context(
              decision_result.get("synthesized_proposal") or {}).get("tier", "silver")
         ),
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# NARRATIVE BATCHING — "CLUSTER EFFECT"  (Phase 8 Parallel Hardening)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# How close two Shadow_AI_Forecast signals must be (seconds) to be clustered
+CLUSTER_WINDOW_SECONDS:   float = 8.0
+# Minimum signals in window to emit a Cluster Block instead of individual ones
+CLUSTER_MIN_SIGNALS:      int   = 2
+
+@dataclass
+class SignalEvent:
+    """A single Shadow_AI_Forecast signal arriving from the chaos storm."""
+    signal_id:      str
+    resource_id:    str
+    drift_type:     str
+    severity:       str
+    forecast_prob:  float
+    arrived_at:     datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    context:        dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class ClusterBlock:
+    """
+    A single 'Sovereign Reflex Cluster Block' synthesized for the War Room
+    when multiple Shadow_AI_Forecast signals arrive within CLUSTER_WINDOW_SECONDS.
+
+    Instead of flooding the War Room with 50 individual narrative streams,
+    NarrativeBatcher synthesizes ONE Cluster Block:
+      - Lists all clustered resources
+      - Aggregates mean probability
+      - Proposes a coordinated multi-resource remediation
+    """
+    cluster_id:       str = field(default_factory=lambda: f"cblk-{uuid.uuid4().hex[:8]}")
+    formed_at:        datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    signals:          list[SignalEvent] = field(default_factory=list)
+
+    @property
+    def size(self) -> int:
+        return len(self.signals)
+
+    @property
+    def mean_probability(self) -> float:
+        if not self.signals:
+            return 0.0
+        return sum(s.forecast_prob for s in self.signals) / len(self.signals)
+
+    @property
+    def max_severity(self) -> str:
+        order = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]
+        found = set(s.severity.upper() for s in self.signals)
+        for sev in order:
+            if sev in found:
+                return sev
+        return "INFO"
+
+    @property
+    def affected_resources(self) -> list[str]:
+        return [s.resource_id for s in self.signals]
+
+    def to_ws_dict(self) -> dict[str, Any]:
+        """Serialize to War Room WebSocket schema — 'cluster' chunk_type."""
+        resource_list = "\n".join(
+            f"  [{i+1}] {s.resource_id[:60]}  P={s.forecast_prob:.0%}  {s.severity}"
+            for i, s in enumerate(self.signals[:20])
+        )
+        body = (
+            f"⚡ SOVEREIGN REFLEX CLUSTER — {self.size} concurrent Shadow AI signals "
+            f"detected within {CLUSTER_WINDOW_SECONDS:.0f}s window.\n\n"
+            f"Mean confidence: P={self.mean_probability:.2%}  "
+            f"Max severity: {self.max_severity}\n\n"
+            f"Affected resources:\n{resource_list}\n\n"
+            f"The Narrative Engine has synthesized a coordinated Cluster Block "
+            f"instead of {self.size} individual War Room streams. "
+            f"All {self.size} resources are queued for parallel remediation "
+            f"under CollisionManager lock discipline. "
+            f"[NIST AI RMF — Govern 1.1] [CIS Control 6 — Maintenance]"
+        )
+        return {
+            "event_id":       f"evt-{uuid.uuid4().hex[:8]}",
+            "tick_timestamp": self.formed_at.isoformat(),
+            "event_type":     "NarrativeChunk",
+            "agent_id":       "narrative_batcher",
+            "trace_id":       self.cluster_id,
+            "w_R":            0.6, "w_C": 0.4,
+            "j_score":        0.0,
+            "message_body": {
+                "chunk_type":          "cluster",
+                "heading":             (
+                    f"🌩️  SOVEREIGN REFLEX CLUSTER — {self.size} simultaneous "
+                    f"Shadow AI signals (P={self.mean_probability:.0%})"
+                ),
+                "body":                body,
+                "citation":            "[NIST AI RMF — Govern 1.1] [Phase 8 Parallel Hardening]",
+                "is_final":            True,
+                "countdown_active":    False,
+                "seconds_remaining":   0,
+                "cluster_meta": {
+                    "cluster_id":         self.cluster_id,
+                    "signal_count":       self.size,
+                    "mean_probability":   round(self.mean_probability, 4),
+                    "max_severity":       self.max_severity,
+                    "window_seconds":     CLUSTER_WINDOW_SECONDS,
+                    "affected_resources": self.affected_resources[:50],
+                    "formed_at":          self.formed_at.isoformat(),
+                },
+                "roi_summary":  None,
+                "math_trace":   None,
+            },
+        }
+
+
+class NarrativeBatcher:
+    """
+    Phase 8 — Narrative Batching Engine ("Cluster Effect").
+
+    Monitors incoming Shadow_AI_Forecast signals. When multiple signals
+    arrive within CLUSTER_WINDOW_SECONDS, it:
+      1. Buffers them into a ClusterBlock instead of individual narratives
+      2. Emits ONE 'Sovereign Reflex Cluster Block' to the War Room
+      3. Returns individual contexts only after the cluster is closed
+
+    Thread-safe: uses threading.RLock for all mutable state.
+
+    Usage:
+        batcher = NarrativeBatcher(broadcast_fn=ws.send_text)
+
+        # Called for each arriving signal (from chaos storm thread pool)
+        result = batcher.ingest_signal(signal)
+        if result == "clustered":
+            pass  # narrative handled by cluster block
+        else:
+            # result is a ClusterBlock (freshly flushed) or "solo"
+            await engine.stream_narrative(individual_ctx)
+    """
+
+    def __init__(
+        self,
+        broadcast_fn: Optional[Callable[[dict], Any]] = None,
+        cluster_window: float = CLUSTER_WINDOW_SECONDS,
+        min_signals:    int   = CLUSTER_MIN_SIGNALS,
+    ) -> None:
+        self._broadcast_fn    = broadcast_fn
+        self._cluster_window  = cluster_window
+        self._min_signals     = min_signals
+        self._state_lock      = threading.RLock()
+
+        # Current open cluster
+        self._current_cluster: Optional[ClusterBlock] = None
+        self._last_signal_at:  Optional[datetime]     = None
+
+        # History
+        self._emitted_clusters: list[ClusterBlock] = []
+        self._solo_count: int = 0
+
+        logger.info(
+            f"[NarrativeBatcher] Initialized (window={cluster_window}s, "
+            f"min_signals={min_signals})"
+        )
+
+    def ingest_signal(
+        self,
+        signal: SignalEvent,
+        force_flush: bool = False,
+    ) -> str:
+        """
+        Ingest a single Shadow_AI_Forecast signal.
+
+        Returns:
+            "clustered"              — merged into open cluster, no immediate emit
+            "solo"                   — below min_signals, caller should stream individually
+            "<cluster_id>"           — cluster was flushed (the id of the emitted block)
+        """
+        now = signal.arrived_at
+        with self._state_lock:
+            # Is there an open cluster AND the new signal arrived within the window?
+            if (
+                self._current_cluster is not None
+                and self._last_signal_at is not None
+                and (now - self._last_signal_at).total_seconds() <= self._cluster_window
+            ):
+                # Merge into open cluster
+                self._current_cluster.signals.append(signal)
+                self._last_signal_at = now
+                logger.debug(
+                    f"[NarrativeBatcher] Signal {signal.signal_id} merged into "
+                    f"cluster {self._current_cluster.cluster_id} "
+                    f"(size={self._current_cluster.size})"
+                )
+                return "clustered"
+
+            # No open cluster OR window expired — we may need to flush the old one
+            old_cluster = self._current_cluster
+            if old_cluster is not None and old_cluster.size >= self._min_signals:
+                self._flush_cluster(old_cluster)
+                flushed_id = old_cluster.cluster_id
+            else:
+                flushed_id = None
+
+            # Open a new cluster with this signal
+            self._current_cluster = ClusterBlock(signals=[signal])
+            self._last_signal_at  = now
+
+            if flushed_id:
+                return flushed_id
+
+            # New cluster started — not enough signals yet → return "clustered"
+            return "clustered"
+
+    def flush(self) -> Optional[ClusterBlock]:
+        """
+        Force-flush the current open cluster.
+        Call this after the chaos storm completes to emit any remaining signals.
+        Returns the flushed ClusterBlock, or None if below min_signals.
+        """
+        with self._state_lock:
+            cluster = self._current_cluster
+            self._current_cluster = None
+            self._last_signal_at  = None
+
+        if cluster is None:
+            return None
+
+        if cluster.size >= self._min_signals:
+            self._flush_cluster(cluster)
+            return cluster
+
+        # Too small → treat each as solo
+        self._solo_count += cluster.size
+        logger.info(
+            f"[NarrativeBatcher] Cluster below min_signals ({cluster.size} < "
+            f"{self._min_signals}) — treating as {cluster.size} solo signal(s)"
+        )
+        return None
+
+    def _flush_cluster(self, cluster: ClusterBlock) -> None:
+        """Emit the cluster block to the broadcast function and record it."""
+        payload = cluster.to_ws_dict()
+        logger.warning(
+            f"[NarrativeBatcher] 🌩️  CLUSTER BLOCK EMITTED {cluster.cluster_id}: "
+            f"{cluster.size} signals, P={cluster.mean_probability:.0%}, "
+            f"severity={cluster.max_severity}"
+        )
+        if self._broadcast_fn:
+            try:
+                self._broadcast_fn(payload)
+            except Exception as exc:
+                logger.error(f"[NarrativeBatcher] Broadcast error: {exc}")
+        self._emitted_clusters.append(cluster)
+
+    def get_stats(self) -> dict[str, Any]:
+        with self._state_lock:
+            pending_size = self._current_cluster.size if self._current_cluster else 0
+        return {
+            "clusters_emitted":   len(self._emitted_clusters),
+            "solo_signals":       self._solo_count,
+            "pending_cluster_sz": pending_size,
+            "cluster_window_s":   self._cluster_window,
+            "min_signals":        self._min_signals,
+            "total_clustered":    sum(c.size for c in self._emitted_clusters),
+        }
+
+    def get_emitted_clusters(self) -> list[dict[str, Any]]:
+        return [c.to_ws_dict() for c in self._emitted_clusters]
