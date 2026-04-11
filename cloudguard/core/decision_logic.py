@@ -433,7 +433,8 @@ class ActiveEditor:
         if not sec_improves and not cost_improves:
             result.status = DecisionStatus.NO_ACTION
             result.reasoning = (
-                f"Neither proposal improves J by > {self.IMPROVEMENT_FLOOR_PCT}%. "
+                f"Neither proposal improves J beyond the 1% Floor "
+                f"(threshold: {self.IMPROVEMENT_FLOOR_PCT}%). "
                 f"Security: {sec_score.j_improvement_pct:.2f}%, "
                 f"Cost: {cost_score.j_improvement_pct:.2f}%. "
                 f"NO_ACTION — current governance is sufficient."

@@ -492,7 +492,21 @@ class SentryPersona(BaseSwarmAgent):
                 commands=[{
                     "action": "delete_oidc_provider_trust",
                     "target_resource_id": resource_context.get("resource_id", "arn:aws:iam::123456789012:role/CloudGuard-B-Admin"),
-                    "payload": "aws.iam.update_assume_role_policy(RoleName=role_arn, PolicyDocument='{\"Version\":\"2012-10-17\",\"Statement\":[]}')"
+                    "python_code": (
+                        "import boto3\n"
+                        "import json\n"
+                        "\n"
+                        "def remediate_oidc_deletion(role_arn):\n"
+                        "    iam = boto3.client('iam')\n"
+                        "    role_name = role_arn.split('/')[-1]\n"
+                        "    # Idempotency: check if rogue trust exists before removing\n"
+                        "    policy = iam.get_role(RoleName=role_name)['Role']['AssumeRolePolicyDocument']\n"
+                        "    if any('rogue-actor' in json.dumps(s) for s in policy.get('Statement', [])):\n"
+                        "        iam.update_assume_role_policy(\n"
+                        "            RoleName=role_name,\n"
+                        '            PolicyDocument=json.dumps({"Version": "2012-10-17", "Statement": []})\n'
+                        "        )\n"
+                    ),
                 }],
                 token_count=120,
             )
@@ -666,7 +680,22 @@ class ConsultantPersona(BaseSwarmAgent):
                 commands=[{
                     "action": "restrict_oidc_trust",
                     "target_resource_id": resource_context.get("resource_id", "arn:aws:iam::123456789012:role/CloudGuard-B-Admin"),
-                    "payload": "def heal_trust_policy(role_arn):\n    policy = aws.iam.get_role(role_arn).assume_role_policy_document\n    policy['Statement'][0]['Condition']['StringLike'] = {'token.actions.githubusercontent.com:sub': 'repo:my-verified-org/my-repo:*'}\n    aws.iam.update_assume_role_policy(RoleName=role_arn, PolicyDocument=json.dumps(policy))"
+                    "python_code": (
+                        "import boto3\n"
+                        "import json\n"
+                        "\n"
+                        "def restrict_oidc_trust(role_arn):\n"
+                        "    iam = boto3.client('iam')\n"
+                        "    role_name = role_arn.split('/')[-1]\n"
+                        "    # Idempotency: get current policy and check condition before restricting\n"
+                        "    policy = iam.get_role(RoleName=role_name)['Role']['AssumeRolePolicyDocument']\n"
+                        "    for stmt in policy.get('Statement', []):\n"
+                        "        cond = stmt.get('Condition', {}).get('StringLike', {})\n"
+                        "        if 'token.actions.githubusercontent.com:sub' in cond:\n"
+                        "            if 'rogue-actor' in str(cond['token.actions.githubusercontent.com:sub']):\n"
+                        "                cond['token.actions.githubusercontent.com:sub'] = 'repo:my-verified-org/my-repo:*'\n"
+                        "    iam.update_assume_role_policy(RoleName=role_name, PolicyDocument=json.dumps(policy))\n"
+                    ),
                 }],
                 token_count=150,
             )

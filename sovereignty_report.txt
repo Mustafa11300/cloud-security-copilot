@@ -1,0 +1,173 @@
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                                                                            ║
+║           CLOUDGUARD-B PHASE 2 — SOVEREIGNTY REPORT                       ║
+║           Final Sovereign Stress Test Results                               ║
+║                                                                            ║
+║           Timestamp:                    2026-04-11 09:03:52 UTC   ║
+║                                                                            ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+  Overall: ✅ ALL PILLARS PASSED
+  Checks: 31/31 passed
+  Total Duration: 63407 ms
+
+  ┌──────┬───────────────────────────────────────────────────┬────────┬──────────┐
+  │  ID  │ Pillar Name                                       │ Status │ Time     │
+  ├──────┼───────────────────────────────────────────────────┼────────┼──────────┤
+  │   P1 │ Vision-Driven "High-IQ" Breach                    │ ✅ PASS │  21438ms │
+  │   P2 │ H-MEM "Amnesia Check"                             │ ✅ PASS │  21031ms │
+  │   P3 │ "Ghost Spike" Noise Floor                         │ ✅ PASS │      0ms │
+  │   P4 │ "Syntax Surgery" Audit                            │ ✅ PASS │  20938ms │
+  │   P5 │ Math Equilibrium (J) — Forced Regression          │ ✅ PASS │      0ms │
+  └──────┴───────────────────────────────────────────────────┴────────┴──────────┘
+
+  ════════════════════════════════════════════════════════════════════════════
+  ✅ PILLAR P1: Vision-Driven "High-IQ" Breach
+  ────────────────────────────────────────────────────────────────────────────
+    [✓] Kernel Completed
+        → Phase: completed
+    [✓] ALE Reduction > $1M
+        → ALE Reduction: $2,400,000.00
+    [✓] Active Decision (not NO_ACTION)
+        → Status: cost_wins
+    [✓] Cost-Win: Policy Reconfiguration over Deletion
+        → Decision: cost_wins, Winning agent: controller
+    [✓] J-Score Improved
+        → J: 0.7500 → 0.0000
+  ────────────────────────────────────────
+  Evidence:
+    • ale_reduction: 2400000.0
+    • kernel_id: kernel-12cbfdb5
+    • j_before: 0.75
+    • j_after: 0.0
+    • decision_status: cost_wins
+    • rounds: 2
+
+  ════════════════════════════════════════════════════════════════════════════
+  ✅ PILLAR P2: H-MEM "Amnesia Check"
+  ────────────────────────────────────────────────────────────────────────────
+    [✓] Semantic Stripper Similarity > 0.85
+        → Similarity: 1.0000 (100.00%)
+    [✓] heuristic_bypassed == True
+        → heuristic_bypassed: True
+    [✓] Round 1 Negotiation Skipped
+        → Rounds executed: 0
+    [✓] Decision Status == HEURISTIC_APPLIED
+        → Status: heuristic
+  ────────────────────────────────────────
+  Evidence:
+    • run1_j: 0.7500 → 0.0000
+    • run1_heuristic_bypassed: False
+    • victories_stored: 1
+    • similarity_score: 1.0
+    • run2_heuristic_bypassed: True
+    • run2_rounds: 0
+
+  ════════════════════════════════════════════════════════════════════════════
+  ✅ PILLAR P3: "Ghost Spike" Noise Floor
+  ────────────────────────────────────────────────────────────────────────────
+    [✓] Zero Swarm Wake-ups
+        → PolicyViolations emitted: 0 (expected 0)
+    [✓] All 50 Events Processed
+        → Events received: 50, filtered: 50
+    [✓] Ghost Spike Detection Rate == 100%
+        → Ghost rate: 100.00% (50/50)
+    [✓] Individual Ghost Spike Classification
+        → CPU 91% event classified as ghost spike: True
+    [✓] No Security Mutations in Ghost Events
+        → Security mutations found: False
+  ────────────────────────────────────────
+  Evidence:
+    • ghost_spike_count: 50
+    • total_triaged: 50
+    • sentry_stats: {'running': False, 'window_seconds': 10.0, 'use_ollama': False, 'buffer_size': 0, 'total_events_rece
+
+  ════════════════════════════════════════════════════════════════════════════
+  ✅ PILLAR P4: "Syntax Surgery" Audit
+  ────────────────────────────────────────────────────────────────────────────
+    [✓] Python Code Extracted
+        → Code snippets found: 3
+    [✓] Valid Python Syntax [snippet 0]
+        → ✓ Parseable
+    [✓] Contains boto3/azure-sdk Calls [snippet 0]
+        → SDK pattern found: True
+    [✓] Idempotency Logic Present [snippet 0]
+        → Idempotency patterns detected: True
+    [✓] Valid Python Syntax [snippet 1]
+        → ✓ Parseable
+    [✓] Contains boto3/azure-sdk Calls [snippet 1]
+        → SDK pattern found: True
+    [✓] Idempotency Logic Present [snippet 1]
+        → Idempotency patterns detected: True
+    [✓] Valid Python Syntax [snippet 2]
+        → ✓ Parseable
+    [✓] Contains boto3/azure-sdk Calls [snippet 2]
+        → SDK pattern found: True
+    [✓] Idempotency Logic Present [snippet 2]
+        → Idempotency patterns detected: True
+  ────────────────────────────────────────
+  Evidence:
+    • code_snippet_0: import boto3
+import json
+
+def restrict_oidc_trust(role_arn):
+    iam = boto3.client('iam')
+    role_
+    • code_snippet_1: import boto3
+import json
+
+def remediate_oidc_deletion(role_arn):
+    iam = boto3.client('iam')
+    r
+    • code_snippet_2: import boto3
+import json
+
+def restrict_oidc_trust(role_arn):
+    iam = boto3.client('iam')
+    role_
+
+  ════════════════════════════════════════════════════════════════════════════
+  ✅ PILLAR P5: Math Equilibrium (J) — Forced Regression
+  ────────────────────────────────────────────────────────────────────────────
+    [✓] Dev Weights Derived Correctly
+        → w_R=0.3, w_C=0.7, env=development
+    [✓] Decision == NO_ACTION
+        → Status: no_action
+    [✓] Security Proposal Below 1% Floor
+        → Security J improvement: -111.6700%
+    [✓] Cost Proposal Below 1% Floor
+        → Cost J improvement: -44.6700%
+    [✓] Cost Weight Dominates (w_C=0.7)
+        → w_C=0.7 — cost increase penalizes J improvement in Dev
+    [✓] Reasoning References 1% Floor
+        → Reasoning: Neither proposal improves J beyond the 1% Floor (threshold: 1.0%). Security: -111.67%, Cost: -44.67%. NO_ACTION — current governance is sufficient.
+    [✓] ROSI Cross-Validation (Expensive Fix)
+        → ROSI: -0.5000 (break-even: 24.0 months)
+  ────────────────────────────────────────
+  Evidence:
+    • w_risk: 0.3
+    • w_cost: 0.7
+    • environment: development
+    • synthesis_status: no_action
+    • j_before: 0.3
+    • j_after: 0.3
+    • reasoning: Neither proposal improves J beyond the 1% Floor (threshold: 1.0%). Security: -111.67%, Cost: -44.67%
+    • rosi: -0.5
+    • breakeven_months: 24.0
+
+  ════════════════════════════════════════════════════════════════════════════
+
+  ╔══════════════════════════════════════════════════════════════════════════╗
+  ║                                                                        ║
+  ║   🏆 ARCHITECTURAL SUFFICIENCY REACHED. PROCEED TO PHASE 3             ║
+  ║      (THE DASHBOARD)                                                   ║
+  ║                                                                        ║
+  ║   The Brain (Phase 2) and the World (Phase 1) are perfectly            ║
+  ║   synchronized. The system can:                                        ║
+  ║     ✓ SENSE  — SentryNode filters noise, detects real threats          ║
+  ║     ✓ REASON — Swarm Personas negotiate adversarial remediation        ║
+  ║     ✓ REMEMBER — H-MEM stores victories, bypasses Round 1             ║
+  ║     ✓ HEAL   — ActiveEditor synthesizes Pareto-optimal fixes           ║
+  ║                                                                        ║
+  ╚══════════════════════════════════════════════════════════════════════════╝

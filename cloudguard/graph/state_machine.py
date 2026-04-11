@@ -32,6 +32,7 @@ Academic References:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import uuid
 from dataclasses import dataclass, field
@@ -361,11 +362,17 @@ class KernelOrchestrator:
                 )
                 return state
 
-        # Query H-MEM directly
+        # Query H-MEM directly — pass raw_logs so the Semantic Stripper
+        # can rebuild the canonical embedding and achieve >0.85 similarity
         for drift in violation.drift_events:
+            raw_log_strs = (
+                [json.dumps(log) for log in drift.raw_logs]
+                if drift.raw_logs else None
+            )
             proposal = self._memory.query_victory(
                 drift_type=drift.drift_type,
                 resource_type=state.resource_context.get("resource_type", ""),
+                raw_logs=raw_log_strs,
             )
             if proposal and proposal.can_bypass_round1:
                 state.heuristic_bypassed = True
