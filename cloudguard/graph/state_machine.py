@@ -48,6 +48,7 @@ from cloudguard.agents.swarm import (
     create_swarm_personas,
 )
 from cloudguard.core.decision_logic import ActiveEditor, DecisionStatus, SynthesisResult
+from cloudguard.core.scheduler import InferenceScheduler
 from cloudguard.core.schemas import AgentProposal, EnvironmentWeights
 from cloudguard.core.swarm import NegotiationRound, NegotiationStatus, SwarmState
 from cloudguard.infra.memory_service import (
@@ -85,6 +86,7 @@ class KernelPhase(str, Enum):
     SELF_CORRECTION = "self_correction"  # Rollback check
     COMPLETED = "completed"              # Done
     FAILED = "failed"                    # Error state
+    DISPATCHED = "dispatched"            # Async inference dispatched to scheduler
 
 
 @dataclass
@@ -226,6 +228,7 @@ class KernelOrchestrator:
         active_editor: Optional[ActiveEditor] = None,
         remediation_callback: Optional[Callable] = None,
         j_score_calculator: Optional[Callable] = None,
+        inference_scheduler: Optional[InferenceScheduler] = None,
     ) -> None:
         self._memory = memory_service or MemoryService()
         self._memory.initialize()
@@ -244,6 +247,7 @@ class KernelOrchestrator:
         self._editor = active_editor or ActiveEditor()
         self._remediation_callback = remediation_callback
         self._j_calculator = j_score_calculator
+        self._scheduler = inference_scheduler
 
         # Stats
         self._processed_count = 0
@@ -304,6 +308,23 @@ class KernelOrchestrator:
             else:
                 # Phase 2–3: Negotiation Rounds
                 state = await self._run_negotiation(state)
+
+                # Phase 7 async mode: dispatch to queue and return immediately.
+                if state.resource_context.get("_scheduler_dispatched") and state.resource_context.get(
+                    "_scheduler_non_blocking"
+                ):
+                    state.transition_to(KernelPhase.DISPATCHED)
+                    state.j_after = state.j_before
+                    state.remediation_success = False
+                    state.completed_at = datetime.now(timezone.utc)
+                    self._processed_count += 1
+                    self._history.append(state)
+                    logger.info(
+                        "⚙️ Kernel async-dispatch: %s queued with task IDs %s",
+                        state.kernel_id,
+                        state.resource_context.get("_scheduler_task_ids"),
+                    )
+                    return state
 
                 # Phase 4: Decision
                 state = await self._make_decision(state)
@@ -445,6 +466,67 @@ class KernelOrchestrator:
         for round_num in range(1, state.max_rounds + 1):
             state.round_counter = round_num
             self._kernel_memory.round_number = round_num
+
+            if self._scheduler and self._scheduler.enabled:
+                severity = "MEDIUM"
+                if state.policy_violation and state.policy_violation.drift_events:
+                    severity = state.policy_violation.drift_events[0].severity
+
+                total_risk = float(state.resource_context.get("total_risk", 0.0) or 0.0)
+                j_impact = min(1.0, abs(total_risk) / 1_000_000.0)
+                probability = float(state.resource_context.get("forecast_probability", 0.0) or 0.0)
+
+                swarm_state_payload = {
+                    "current_j_score": state.j_before,
+                    "drift_event_id": (
+                        state.policy_violation.violation_id if state.policy_violation else ""
+                    ),
+                    "weights": {"w_risk": state.w_risk, "w_cost": state.w_cost},
+                }
+
+                scheduled = self._scheduler.dispatch_reasoning(
+                    sentry_context=self._kernel_memory.get_sentry_context(),
+                    consultant_context=self._kernel_memory.get_consultant_context(),
+                    resource_context=state.resource_context,
+                    swarm_state=swarm_state_payload,
+                    j_impact=j_impact,
+                    probability=probability,
+                    severity=severity,
+                    cluster_signals=state.resource_context.get("_cluster_signals"),
+                )
+
+                state.resource_context["_scheduler_task_ids"] = {
+                    "sentry": scheduled.sentry_task_id,
+                    "consultant": scheduled.consultant_task_id,
+                }
+                state.resource_context["_scheduler_priority"] = scheduled.priority
+                state.resource_context["_scheduler_queue"] = scheduled.queue
+                state.resource_context["_sovereign_gate_seconds"] = scheduled.gate_seconds
+                state.resource_context["_scheduler_dispatched"] = True
+                state.resource_context["_scheduler_non_blocking"] = self._scheduler.non_blocking
+
+                if self._scheduler.non_blocking:
+                    # Return immediately so telemetry monitoring remains non-blocking.
+                    return state
+
+                # Blocking collection mode for compatibility/testing.
+                if not scheduled.sentry_task_id:
+                    # Scheduler unavailable at runtime, fall back to direct proposals.
+                    logger.warning("⚙️ Scheduler dispatch unavailable, falling back to direct proposal path")
+                else:
+                    sentry_result = self._scheduler.collect_task(scheduled.sentry_task_id)
+                    state.sentry_proposal = AgentProposal(**sentry_result["proposal"])
+                    if scheduled.consultant_task_id:
+                        consultant_result = self._scheduler.collect_task(scheduled.consultant_task_id)
+                        state.consultant_proposal = AgentProposal(**consultant_result["proposal"])
+
+                    logger.info(
+                        "⚙️ Scheduler collected proposals: queue=%s, priority=%s, gate=%ss",
+                        scheduled.queue,
+                        scheduled.priority,
+                        scheduled.gate_seconds,
+                    )
+                    return state
 
             # CISO proposes
             state.transition_to(KernelPhase.SENTRY_PROPOSE)

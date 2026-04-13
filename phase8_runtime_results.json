@@ -1,0 +1,36 @@
+{
+  "started_at": "2026-04-11T17:53:02.244678+00:00",
+  "finished_at": "2026-04-11T17:53:02.928185+00:00",
+  "total_drifts": 50,
+  "oidc_count": 10,
+  "shadow_ai_count": 10,
+  "minor_count": 30,
+  "timers_armed": 50,
+  "timer_parallel_ok": true,
+  "workers_reached": 50,
+  "worker_parallel_ok": true,
+  "code_veto_count": 2,
+  "global_veto": true,
+  "collision_stats": {
+    "redis_available": false,
+    "lock_ttl_ms": 30000,
+    "acquired_count": 49,
+    "batched_count": 0,
+    "queued_count": 2,
+    "released_count": 49,
+    "active_locks": 0,
+    "active_batches": {},
+    "queue_depths": {
+      "iam-role-PII-vault": 2
+    },
+    "global_veto_count": 1
+  },
+  "committed_count": 48,
+  "aborted_count": 2,
+  "cluster_detected": true,
+  "cluster_size": 10,
+  "cluster_heading": "\ud83c\udf29\ufe0f  SOVEREIGN REFLEX CLUSTER \u2014 10 simultaneous Shadow AI signals (P=94%)",
+  "business_narrative": "\ud83d\udee1\ufe0f Sovereign Reflex: 10/10 Shadow AI threats neutralized in parallel. $1.2M Risk Mitigated.",
+  "report_path": "sovereign_safety_report.md",
+  "pass_all": true
+}

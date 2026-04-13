@@ -4,22 +4,22 @@
 ║           CLOUDGUARD-B PHASE 2 — SOVEREIGNTY REPORT                       ║
 ║           Final Sovereign Stress Test Results                               ║
 ║                                                                            ║
-║           Timestamp:                    2026-04-11 09:03:52 UTC   ║
+║           Timestamp:                    2026-04-11 21:43:50 UTC   ║
 ║                                                                            ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 
   Overall: ✅ ALL PILLARS PASSED
-  Checks: 31/31 passed
-  Total Duration: 63407 ms
+  Checks: 28/28 passed
+  Total Duration: 194413 ms
 
   ┌──────┬───────────────────────────────────────────────────┬────────┬──────────┐
   │  ID  │ Pillar Name                                       │ Status │ Time     │
   ├──────┼───────────────────────────────────────────────────┼────────┼──────────┤
-  │   P1 │ Vision-Driven "High-IQ" Breach                    │ ✅ PASS │  21438ms │
-  │   P2 │ H-MEM "Amnesia Check"                             │ ✅ PASS │  21031ms │
-  │   P3 │ "Ghost Spike" Noise Floor                         │ ✅ PASS │      0ms │
-  │   P4 │ "Syntax Surgery" Audit                            │ ✅ PASS │  20938ms │
-  │   P5 │ Math Equilibrium (J) — Forced Regression          │ ✅ PASS │      0ms │
+  │   P1 │ Vision-Driven "High-IQ" Breach                    │ ✅ PASS │  72412ms │
+  │   P2 │ H-MEM "Amnesia Check"                             │ ✅ PASS │  62103ms │
+  │   P3 │ "Ghost Spike" Noise Floor                         │ ✅ PASS │     12ms │
+  │   P4 │ "Syntax Surgery" Audit                            │ ✅ PASS │  59862ms │
+  │   P5 │ Math Equilibrium (J) — Forced Regression          │ ✅ PASS │     25ms │
   └──────┴───────────────────────────────────────────────────┴────────┴──────────┘
 
   ════════════════════════════════════════════════════════════════════════════
@@ -38,7 +38,7 @@
   ────────────────────────────────────────
   Evidence:
     • ale_reduction: 2400000.0
-    • kernel_id: kernel-12cbfdb5
+    • kernel_id: kernel-e3877f66
     • j_before: 0.75
     • j_after: 0.0
     • decision_status: cost_wins
@@ -87,7 +87,7 @@
   ✅ PILLAR P4: "Syntax Surgery" Audit
   ────────────────────────────────────────────────────────────────────────────
     [✓] Python Code Extracted
-        → Code snippets found: 3
+        → Code snippets found: 2
     [✓] Valid Python Syntax [snippet 0]
         → ✓ Parseable
     [✓] Contains boto3/azure-sdk Calls [snippet 0]
@@ -100,12 +100,6 @@
         → SDK pattern found: True
     [✓] Idempotency Logic Present [snippet 1]
         → Idempotency patterns detected: True
-    [✓] Valid Python Syntax [snippet 2]
-        → ✓ Parseable
-    [✓] Contains boto3/azure-sdk Calls [snippet 2]
-        → SDK pattern found: True
-    [✓] Idempotency Logic Present [snippet 2]
-        → Idempotency patterns detected: True
   ────────────────────────────────────────
   Evidence:
     • code_snippet_0: import boto3
@@ -115,12 +109,6 @@ def restrict_oidc_trust(role_arn):
     iam = boto3.client('iam')
     role_
     • code_snippet_1: import boto3
-import json
-
-def remediate_oidc_deletion(role_arn):
-    iam = boto3.client('iam')
-    r
-    • code_snippet_2: import boto3
 import json
 
 def restrict_oidc_trust(role_arn):
