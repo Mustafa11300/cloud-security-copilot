@@ -37,7 +37,7 @@ print("LOADED:", os.getenv("ES_HOST"))
 # Allow React frontend to call this API (CORS = Cross-Origin Resource Sharing)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*","https://cloudgaurd.vercel.app"],
+    allow_origins=["*","https://cloudgaurd.vercel.app","https://cloudguard-frontend.vercel.app"],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
