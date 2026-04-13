@@ -1,17 +1,87 @@
-import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { motion } from 'framer-motion';
 import HoneycombCell from '../components/HoneycombCell';
+import { useSovereignStream } from '../../../lib/useSovereignStream';
+
+function inferResourceType(resourceId) {
+  if (!resourceId) return 'Resource';
+  if (resourceId.includes('iam')) return 'IAM';
+  if (resourceId.includes('s3')) return 'S3';
+  if (resourceId.includes('rds')) return 'RDS';
+  if (resourceId.includes('eks')) return 'EKS';
+  if (resourceId.includes('ec2') || resourceId.includes('i-')) return 'EC2';
+  return 'Node';
+}
+
+function makePlaceholderTopology() {
+  return Array.from({ length: 24 }).map((_, index) => ({
+    resource_id: `placeholder-${index + 1}`,
+    status: index % 8 === 0 ? 'RED' : index % 3 === 0 ? 'YELLOW' : 'GREEN',
+  }));
+}
+
+function chunkBy(items, size) {
+  const rows = [];
+  for (let i = 0; i < items.length; i += size) {
+    rows.push(items.slice(i, i + size));
+  }
+  return rows;
+}
 
 export default function IronDomeView() {
   const [is3D, setIs3D] = useState(true);
+  const [displayTopology, setDisplayTopology] = useState([]);
 
-  const resources = Array.from({ length: 24 }).map((_, i) => ({
-    id: i,
-    name: `aws_node_${i}`,
-    type: ['EC2', 'RDS', 'S3', 'IAM', 'EKS'][Math.floor(Math.random() * 5)],
-    isCollision: i === 12,
-    isReflex: i === 4 || i === 8 || i === 19
-  }));
+  const { topology } = useSovereignStream();
+
+  const pendingTopologyRef = useRef(null);
+  const rafRef = useRef(null);
+
+  useEffect(() => {
+    pendingTopologyRef.current = topology;
+    if (rafRef.current) return;
+
+    rafRef.current = requestAnimationFrame(() => {
+      setDisplayTopology(Array.isArray(pendingTopologyRef.current) ? pendingTopologyRef.current : []);
+      rafRef.current = null;
+    });
+  }, [topology]);
+
+  useEffect(() => {
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
+
+  const resources = useMemo(() => {
+    const source = displayTopology.length ? displayTopology : makePlaceholderTopology();
+
+    return source.slice(0, 60).map((item, index) => {
+      const resourceId = item.resource_id || item.id || `resource-${index}`;
+      const status = String(item.status || item.severity || 'YELLOW').toUpperCase();
+
+      const isLocked = Boolean(item.is_locked) || status === 'RESOURCE_LOCKED' || status === 'LOCKED';
+      const isReflex = ['RED', 'CRITICAL', 'AMBER'].includes(status);
+      const isCollision = status === 'YELLOW' || status === 'AMBER';
+      const isDissipating = status === 'DISSIPATED';
+
+      return {
+        id: resourceId,
+        name: resourceId,
+        type: inferResourceType(resourceId),
+        status,
+        isLocked,
+        isReflex,
+        isCollision,
+        isDissipating,
+      };
+    });
+  }, [displayTopology]);
+
+  const rows = useMemo(() => chunkBy(resources, 6), [resources]);
+  const reflexCount = resources.filter((resource) => resource.isReflex).length;
+  const lockCount = resources.filter((resource) => resource.isLocked).length;
+  const reflexBurst = reflexCount >= 50;
 
   return (
     <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -15 }} transition={{ duration: 0.3 }} className="flex-1 h-full flex flex-col bg-transparent overflow-hidden px-1 py-1 absolute inset-0 w-full">
@@ -32,20 +102,26 @@ export default function IronDomeView() {
              <span className="flex items-center gap-2"><div className="w-3 h-3 bg-slate-50 border border-slate-300 rounded"></div> Standard Node</span>
              <span className="flex items-center gap-2"><div className="w-3 h-3 bg-blue-100 border border-blue-400 rounded animate-pulse"></div> Parallel Reflex (Remediating)</span>
              <span className="flex items-center gap-2"><div className="w-3 h-3 bg-amber-100 border border-amber-400 rounded"></div> CISO Override</span>
+             <span className="flex items-center gap-2"><div className="w-3 h-3 bg-sky-100 border border-sky-400 rounded stasis-pulse"></div> Stasis Field (Locked)</span>
            </div>
 
-           {/* Offset Honeycomb Grid with Base 3D Rotation */}
+           <div className="mb-4 text-[11px] text-slate-600 font-jetbrains flex gap-4">
+             <span>Total Nodes: {resources.length}</span>
+             <span>Reflex Nodes: {reflexCount}</span>
+             <span>Locked Nodes: {lockCount}</span>
+           </div>
+
            <motion.div 
              animate={is3D ? { rotateX: 45, rotateZ: -10, rotateY: -10, scale: 0.85 } : { rotateX: 0, rotateZ: 0, rotateY: 0, scale: 1 }}
              transition={{ duration: 0.8, ease: "easeInOut" }}
-             className="flex-1 w-full flex flex-col gap-2 items-center justify-center overflow-visible py-10 origin-center"
+             className={`flex-1 w-full flex flex-col gap-2 items-center justify-center overflow-visible py-10 origin-center ${reflexBurst ? 'reflex-burst' : ''}`}
              style={{ transformStyle: "preserve-3d" }}
              onClick={() => setIs3D(!is3D)}
            >
-             {[0, 1, 2, 3].map(row => (
-               <div key={row} className={`flex gap-3 ${row % 2 === 1 ? 'ml-16' : ''}`}>
-                 {resources.slice(row * 6, row * 6 + 6).map(res => (
-                   <HoneycombCell key={res.id} data={res} is3D={is3D} />
+             {rows.map((rowResources, rowIndex) => (
+               <div key={`row-${rowIndex}`} className={`flex gap-3 ${rowIndex % 2 === 1 ? 'ml-16' : ''}`}>
+                 {rowResources.map((resource) => (
+                   <HoneycombCell key={resource.id} data={resource} is3D={is3D} />
                  ))}
                </div>
              ))}

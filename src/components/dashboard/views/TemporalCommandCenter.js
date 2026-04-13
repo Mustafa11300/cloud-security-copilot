@@ -1,12 +1,95 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Zap, Shield, AlertTriangle, ChevronRight, Database, BookOpen, Activity } from 'lucide-react';
 import MetricCard from '../components/MetricCard';
 import RiskItem from '../components/RiskItem';
 import LogTerminalItem from '../components/LogTerminalItem';
+import { useSovereignStream } from '../../../lib/useSovereignStream';
+import { useMetricData } from '../../../lib/useMetricData';
+
+function formatCurrency(value) {
+  const amount = Number(value || 0);
+  if (amount >= 1000) {
+    return `$${(amount / 1000).toFixed(1)}k`;
+  }
+  return `$${Math.round(amount)}`;
+}
+
+function toPercent(value) {
+  const n = Number(value || 0);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(100, Math.round(n)));
+}
+
+function eventToLog(entry) {
+  const body = entry.message_body || {};
+  const eventType = entry.event_type || 'Event';
+
+  let action = '[NOTIFIED]';
+  if (eventType === 'Remediation') action = '[SHUTDOWN]';
+  if (eventType === 'ForecastSignal' && body.type === 'Amber_Alert') action = '[GOVERN]';
+  if (eventType === 'NarrativeChunk' && body.chunk_type === 'veto') action = '[VETO]';
+  if (eventType === 'NarrativeChunk' && body.chunk_type === 'exec') action = '[ROTATED]';
+
+  const timestamp = String(entry.tick_timestamp || '').split('T')[1]?.replace('Z', '') || '--:--:--';
+  const target =
+    body.heading ||
+    body.resource_id ||
+    body.target ||
+    body.action ||
+    eventType;
+
+  const rule =
+    typeof body.j_delta === 'number'
+      ? `J-Delta: ${body.j_delta.toFixed(4)}`
+      : `Trace: ${(entry.trace_id || 'n/a').slice(0, 12)}`;
+
+  return { action, time: timestamp.slice(0, 8), target, rule };
+}
 
 export default function TemporalCommandCenter({ onCopilotClick }) {
   const [activeTab, setActiveTab] = useState('Tick');
+  const { isConnected, events, amberAlerts, topology, backoffStatus, jScore } = useSovereignStream();
+  const { metrics } = useMetricData();
+
+  const forecastSignals = useMemo(
+    () => events.filter((event) => event.event_type === 'ForecastSignal').slice(-5),
+    [events],
+  );
+
+  const remediations = useMemo(
+    () => events.filter((event) => event.event_type === 'Remediation').slice(-6).reverse(),
+    [events],
+  );
+
+  const logItems = useMemo(
+    () => events.slice(-10).reverse().map(eventToLog),
+    [events],
+  );
+
+  const postureScore = useMemo(() => {
+    const fromCompliance = metrics?.compliance?.compliance_percentage;
+    if (typeof fromCompliance === 'number') return toPercent(fromCompliance);
+    return toPercent((1 - Number(jScore || 0)) * 100);
+  }, [jScore, metrics]);
+
+  const totalResources = useMemo(() => {
+    const compliant = Number(metrics?.compliance?.compliant_resources || 0);
+    const nonCompliant = Number(metrics?.compliance?.non_compliant_resources || 0);
+    const total = compliant + nonCompliant;
+    if (total > 0) return total;
+    return topology.length;
+  }, [metrics, topology.length]);
+
+  const activePerturbations = useMemo(() => {
+    const redCount = topology.filter((item) => {
+      const status = String(item.status || '').toUpperCase();
+      return ['RED', 'CRITICAL', 'AMBER'].includes(status);
+    }).length;
+    return Math.max(redCount, amberAlerts.length);
+  }, [amberAlerts.length, topology]);
+
+  const fastPassSavings = amberAlerts.length * 250;
 
   return (
     <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -15 }} transition={{ duration: 0.3 }} className="flex-1 h-full flex gap-4 overflow-hidden w-full absolute inset-0">
@@ -22,37 +105,38 @@ export default function TemporalCommandCenter({ onCopilotClick }) {
             <button className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-full text-[11px] font-semibold transition-colors shadow-sm ml-0.5">
               <Zap size={12} className="text-white" /> T-Minus Sync
             </button>
+            <span className={`px-3 py-1 text-[10px] font-bold rounded-full border ${isConnected ? 'text-emerald-700 border-emerald-200 bg-emerald-50' : 'text-slate-500 border-slate-200 bg-slate-50'}`}>
+              {isConnected ? 'WS Connected' : 'WS Reconnecting'}
+            </span>
           </div>
         </header>
 
-        {/* Top Metric Cards - Strictly Sky / Blue Theme */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 shrink-0">
           <MetricCard 
-            title="Posture Score" value="84" suffix="/100"
-            badge="AVG. PRE-CRIME LEAD: +2.4 Ticks" badgeColor="text-blue-600 bg-blue-50 font-bold border border-blue-200 tracking-tight"
-            progress={84} progressColor="from-blue-400 to-blue-500"
+            title="Posture Score" value={String(postureScore)} suffix="/100"
+            badge={`J-Score: ${Number(jScore || 0).toFixed(4)}`} badgeColor="text-blue-600 bg-blue-50 font-bold border border-blue-200 tracking-tight"
+            progress={postureScore} progressColor="from-blue-400 to-blue-500"
           />
           <MetricCard 
-            title="Active Perturbations" value="3" suffix=" Vectors"
-            badge="Action Needed" badgeColor="text-blue-600 bg-blue-50 border border-blue-200"
-            progress={15} progressColor="from-blue-400 to-blue-500"
+            title="Active Perturbations" value={String(activePerturbations)} suffix=" Vectors"
+            badge={activePerturbations > 0 ? 'Action Needed' : 'Stable'} badgeColor="text-blue-600 bg-blue-50 border border-blue-200"
+            progress={toPercent((activePerturbations / Math.max(totalResources || 1, 1)) * 100)} progressColor="from-blue-400 to-blue-500"
           />
           <MetricCard 
-            title="Resources Indexed" value="1,492" suffix=""
+            title="Resources Indexed" value={String(totalResources || 0)} suffix=""
             badge="Sovereign Active" badgeColor="text-blue-600 bg-blue-50 border border-blue-200"
             hideBar={true}
           />
           <MetricCard 
-            title="Fast-Pass Savings" value="$2.4k" suffix="/mo"
-            badge="$250 from shadow AI shutdown" badgeColor="text-blue-600 bg-blue-50 border border-blue-200 font-bold"
-            progress={40} progressColor="from-blue-400 to-blue-500"
+            title="Fast-Pass Savings" value={formatCurrency(fastPassSavings)} suffix="/run"
+            badge="$250 per Fast-Pass" badgeColor="text-blue-600 bg-blue-50 border border-blue-200 font-bold"
+            progress={toPercent((fastPassSavings / 5000) * 100)} progressColor="from-blue-400 to-blue-500"
           />
         </div>
 
         {/* Middle Row */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 flex-1 min-h-0">
           
-          {/* Horizontal Pulse Stream */}
           <div className="md:col-span-2 bg-white/70 backdrop-blur-xl rounded-[20px] p-4 shadow-sm border border-white flex flex-col h-full overflow-hidden">
              <div className="flex justify-between items-start mb-3 shrink-0">
               <div>
@@ -68,14 +152,12 @@ export default function TemporalCommandCenter({ onCopilotClick }) {
             </div>
             
             <div className="flex-1 w-full min-h-0 relative mt-2 bg-blue-50/50 rounded-[16px] overflow-hidden flex border border-blue-100/50 shadow-inner">
-                {/* Left: Past Events */}
                 <div className="w-[30%] h-full border-r border-blue-200 border-dashed flex flex-col justify-center items-end pr-6 gap-6 relative">
                     <div className="absolute top-4 right-4 text-[10px] font-bold text-blue-500 uppercase tracking-widest bg-white py-1 px-3 rounded shadow-sm border border-blue-100">Past Events</div>
                     <div className="flex items-center gap-2 opacity-60"><div className="w-4 h-4 rounded-full bg-blue-300"></div><div className="h-0.5 w-16 bg-blue-200"></div></div>
                     <div className="flex items-center gap-2 opacity-40"><div className="w-4 h-4 rounded-full bg-blue-300"></div><div className="h-0.5 w-24 bg-blue-200"></div></div>
                 </div>
                 
-                {/* Center: Present Status */}
                 <div className="w-[40%] h-full flex flex-col justify-center items-center relative z-10">
                     <div className="absolute top-4 text-[10px] uppercase font-bold text-blue-600 bg-white border border-blue-100 shadow-sm py-1 px-4 rounded-full">Present Status</div>
                     
@@ -90,23 +172,49 @@ export default function TemporalCommandCenter({ onCopilotClick }) {
                       </motion.div>
                       <div className="w-16 h-1 bg-gradient-to-l from-blue-300/50 to-blue-400 rounded"></div>
                     </div>
+                    <div className="mt-4 px-3 py-1 rounded-full text-[10px] font-bold border border-blue-100 bg-white text-blue-600">
+                      {isConnected ? 'Signal Stable' : 'Awaiting Stream'}
+                    </div>
                 </div>
                 
-                {/* Right: Forecast Horizon (Sky Themed!) */}
                 <div className="w-[30%] h-full bg-gradient-to-r from-blue-50 to-blue-100 flex flex-col justify-center items-start pl-6 gap-4 relative overflow-hidden border-l border-blue-200">
                     <div className="absolute top-4 left-4 text-[10px] uppercase font-bold text-blue-600 flex items-center gap-1.5"><AlertTriangle size={12}/> Forecast Horizon</div>
-                    
-                    <motion.div 
-                      animate={{ x: [50, 0], opacity: [0, 1] }} transition={{ repeat: Infinity, duration: 4, ease: "easeOut" }}
-                      className="bg-blue-500 text-white text-[10px] font-bold px-3 py-1.5 rounded-full shadow-[0_4px_15px_rgba(59,130,246,0.4)] flex items-center gap-2"
-                    >
-                      <div className="w-2 h-2 bg-blue-200 rounded-full animate-pulse"></div> LSTM: Drift Span
-                    </motion.div>
+
+                    {forecastSignals.length === 0 && (
+                      <div className="bg-white/80 text-blue-600 text-[10px] font-bold px-3 py-1.5 rounded-full border border-blue-100">
+                        Waiting for forecast signals
+                      </div>
+                    )}
+
+                    {forecastSignals.map((signal) => {
+                      const body = signal.message_body || {};
+                      const isAmber = body.type === 'Amber_Alert';
+                      return (
+                        <motion.div
+                          key={signal.event_id || `${body.target}-${body.type}`}
+                          initial={{ x: 20, opacity: 0 }}
+                          animate={{ x: 0, opacity: 1 }}
+                          className={`text-[10px] font-bold px-3 py-1.5 rounded-full shadow-sm border flex items-center gap-2 ${isAmber ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-blue-500 text-white border-blue-500'}`}
+                        >
+                          <div className={`w-2 h-2 rounded-full ${isAmber ? 'bg-amber-400 animate-pulse' : 'bg-blue-200'}`}></div>
+                          {body.type || 'Forecast'} {typeof body.probability === 'number' ? `P=${(body.probability * 100).toFixed(0)}%` : ''}
+                        </motion.div>
+                      );
+                    })}
+
+                    {amberAlerts.slice(-2).map((signal, index) => (
+                      <div
+                        key={`ghost-${signal.event_id}`}
+                        className="absolute right-2 text-[9px] px-2 py-1 rounded-full bg-amber-200/70 border border-amber-300 text-amber-800"
+                        style={{ bottom: `${20 + index * 24}%` }}
+                      >
+                        Ghost Node
+                      </div>
+                    ))}
                 </div>
             </div>
           </div>
 
-          {/* Liaison Console Link Block - Sky Blue Gradient */}
           <motion.div 
              whileHover={{ y: -4 }}
              className="relative overflow-hidden bg-gradient-to-b from-[#7dbbff] to-[#dcedff] rounded-[20px] flex flex-col h-full border border-blue-200 shadow-sm cursor-pointer md:col-span-1 min-h-[300px]" 
@@ -122,10 +230,10 @@ export default function TemporalCommandCenter({ onCopilotClick }) {
                
                <div className="flex flex-col gap-2 relative z-20 w-max max-w-full">
                   <div className="bg-white/50 backdrop-blur-md rounded-md px-3 py-2 text-[11px] font-bold text-blue-900 shadow-sm border border-white/50 whitespace-nowrap overflow-hidden text-ellipsis">
-                    Parsed 14 IAM roles successfully.
+                    Real-time Narrative feed connected.
                   </div>
                   <div className="bg-white/50 backdrop-blur-md rounded-md px-3 py-2 text-[11px] font-bold text-blue-900 shadow-sm border border-white/50 whitespace-nowrap overflow-hidden text-ellipsis">
-                    S3 Bucket 'logs-prod' analyzed.
+                    {backoffStatus.active ? `Sovereign Backoff: ${backoffStatus.reason}` : 'Sentry and Controller stream active.'}
                   </div>
                </div>
 
@@ -144,7 +252,6 @@ export default function TemporalCommandCenter({ onCopilotClick }) {
           </motion.div>
         </div>
 
-        {/* Bottom Area - Fast list (Sky Theme UI) */}
         <div className="bg-white/70 backdrop-blur-xl rounded-[20px] p-4 shadow-sm border border-white flex flex-col shrink-0 min-h-[180px]">
           <div className="mb-3 flex justify-between items-center shrink-0">
             <div>
@@ -153,15 +260,27 @@ export default function TemporalCommandCenter({ onCopilotClick }) {
             <button className="text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-100 px-3 py-1.5 rounded-full hover:bg-blue-100 transition-colors">Historical Logs</button>
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-x-8 gap-y-2 flex-1 overflow-auto scrollbar-hide content-start pr-1">
-            <RiskItem icon={<Database size={14} className="text-blue-400" />} title="RDS Public Snapshots" resource="db-backup-prod" tagVal="SOVEREIGN FIXED" tagColor="bg-blue-50 text-blue-600 border border-blue-200 font-bold" />
-            <RiskItem icon={<Shield size={14} className="text-blue-400" />} title="IAM Admin Privileges" resource="user/dev" tagVal="DISSIPATING" tagColor="bg-blue-50 text-blue-600 border border-blue-200 font-bold" />
-            <RiskItem icon={<BookOpen size={14} className="text-blue-400" />} title="S3 Default Encryption" resource="assets-bucket" tagVal="SOVEREIGN FIXED" tagColor="bg-blue-50 text-blue-600 border border-blue-200 font-bold" />
+            {remediations.length === 0 && (
+              <RiskItem icon={<BookOpen size={14} className="text-blue-400" />} title="Awaiting Remediations" resource="No remediation events yet" tagVal="STANDBY" tagColor="bg-blue-50 text-blue-600 border border-blue-200 font-bold" />
+            )}
+            {remediations.map((event) => {
+              const body = event.message_body || {};
+              return (
+                <RiskItem
+                  key={event.event_id}
+                  icon={<Database size={14} className="text-blue-400" />}
+                  title={body.action || 'Sovereign Remediation'}
+                  resource={body.resource_id || 'unknown'}
+                  tagVal={body.success ? 'SOVEREIGN FIXED' : 'NEEDS REVIEW'}
+                  tagColor={body.success ? 'bg-blue-50 text-blue-600 border border-blue-200 font-bold' : 'bg-amber-50 text-amber-700 border border-amber-200 font-bold'}
+                />
+              );
+            })}
           </div>
         </div>
       </main>
 
       <aside className="w-[320px] hidden 2xl:flex flex-col gap-3 h-full shrink-0 overflow-hidden pb-1 pt-1 border-l border-slate-200/50 pl-4 relative">
-        {/* Sky Theme Reformatted Sovereign Log */}
         <div className="bg-white/80 backdrop-blur-2xl rounded-[20px] p-5 flex flex-col shadow-sm border border-white flex-1 min-h-0 relative">
            <h3 className="text-[15px] font-bold text-blue-700 mb-1 flex items-center gap-2">
              <Activity size={18} /> The Sovereign Log
@@ -169,11 +288,18 @@ export default function TemporalCommandCenter({ onCopilotClick }) {
            <p className="text-[10px] text-blue-400 mb-5 font-mono uppercase tracking-widest border-b border-blue-100 pb-3">Stream: active_nodes_us_1</p>
            
            <div className="flex flex-col gap-4 flex-1 overflow-y-auto scrollbar-hide pr-1">
-              <LogTerminalItem time="14:02:45" action="[VETO]" target="Surgeon blocked over-privileged script (boto3:FullAccess)" rule="J-Delta: 0.82" />
-              <LogTerminalItem time="13:58:12" action="[GOVERN]" target="NIST AI RMF 2.1 Robustness check: PASSED" rule="Compliance" />
-              <LogTerminalItem time="13:30:00" action="[SHUTDOWN]" target="Shadow AI spawn neutralized autonomously" rule="TempLead: +3" />
-              <LogTerminalItem time="12:15:22" action="[ROTATED]" target="IAM Access Keys replaced smoothly." rule="KeyAgePolicy" />
-              <LogTerminalItem time="10:30:00" action="[NOTIFIED]" target="Dev team alerted about upcoming scaling." rule="Threshold: 80%" />
+              {logItems.length === 0 && (
+                <LogTerminalItem time="--:--:--" action="[NOTIFIED]" target="Waiting for live sovereign events." rule="WS stream" />
+              )}
+              {logItems.map((item, idx) => (
+                <LogTerminalItem
+                  key={`${item.action}-${item.time}-${idx}`}
+                  time={item.time}
+                  action={item.action}
+                  target={item.target}
+                  rule={item.rule}
+                />
+              ))}
            </div>
         </div>
       </aside>

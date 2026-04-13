@@ -1,17 +1,62 @@
-import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { MessageSquare, ShieldAlert } from 'lucide-react';
 import NegotiationLog from '../components/NegotiationLog';
+import { useSovereignStream } from '../../../lib/useSovereignStream';
+import { useFastPassTimer } from '../../../lib/useFastPassTimer';
+
+function statusColor(chunkType) {
+  if (chunkType === 'threat') return 'bg-amber-50 text-amber-700 border-amber-300 shadow-sm';
+  if (chunkType === 'argument') return 'bg-blue-50 text-blue-700 border-blue-300 shadow-sm';
+  if (chunkType === 'synthesis') return 'bg-emerald-50 text-emerald-700 border-emerald-300 shadow-sm';
+  if (chunkType === 'veto') return 'bg-rose-50 text-rose-700 border-rose-300 shadow-sm';
+  if (chunkType === 'amber_alert') return 'bg-amber-50 text-amber-700 border-amber-300 shadow-sm';
+  if (chunkType === 'advisory') return 'bg-blue-50 text-blue-700 border-blue-300 shadow-sm';
+  if (chunkType === 'dissipated') return 'bg-emerald-50 text-emerald-700 border-emerald-300 shadow-sm';
+  return 'bg-slate-50 text-slate-700 border-slate-300 shadow-sm';
+}
 
 export default function FrictionHudView() {
-  const [countdown, setCountdown] = useState(10);
+  const { events, negotiations } = useSovereignStream();
+  const { isArmed, secondsRemaining, threatInfo, triggerVeto } = useFastPassTimer(events);
+
+  const [dissipatedSignals, setDissipatedSignals] = useState([]);
+  const seenDissipatedRef = useRef(new Set());
+
+  const traceEvents = useMemo(
+    () => {
+      const narrative = negotiations.filter((event) => event.event_type === 'NarrativeChunk');
+      const forecast = events.filter((event) => event.event_type === 'ForecastSignal');
+
+      return [...narrative, ...forecast]
+        .sort((a, b) => {
+          const ta = Date.parse(a.tick_timestamp || '') || 0;
+          const tb = Date.parse(b.tick_timestamp || '') || 0;
+          return tb - ta;
+        })
+        .slice(0, 8);
+    },
+    [events, negotiations],
+  );
 
   useEffect(() => {
-    const int = setInterval(() => {
-      setCountdown(prev => (prev > 0 ? prev - 1 : 10));
-    }, 1000);
-    return () => clearInterval(int);
-  }, []);
+    const freshDissipated = events.filter((event) => {
+      if (event.event_type !== 'ForecastSignal') return false;
+      return event.message_body?.type === 'Dissipated';
+    });
+
+    freshDissipated.forEach((signal) => {
+      if (!signal.event_id || seenDissipatedRef.current.has(signal.event_id)) return;
+      seenDissipatedRef.current.add(signal.event_id);
+
+      setDissipatedSignals((prev) => [...prev, signal]);
+      setTimeout(() => {
+        setDissipatedSignals((prev) => prev.filter((item) => item.event_id !== signal.event_id));
+      }, 1200);
+    });
+  }, [events]);
+
+  const countdownValue = isArmed ? String(secondsRemaining).padStart(2, '0') : '--';
 
   return (
     <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -15 }} transition={{ duration: 0.3 }}  className="flex-1 h-full flex flex-col bg-transparent overflow-hidden px-1 py-1 absolute inset-0 w-full">
@@ -25,38 +70,53 @@ export default function FrictionHudView() {
       </header>
       
       <div className="flex-1 flex gap-4 pb-2">
-        {/* Left Side: Negotiation Trace */}
         <div className="flex-[2] bg-white/70 backdrop-blur-2xl rounded-[20px] shadow-sm border border-white p-6 flex flex-col relative overflow-hidden">
            <h2 className="text-[15px] font-bold text-slate-800 flex items-center gap-2 mb-6 pb-4 border-b border-slate-200">
              <MessageSquare size={16} className="text-blue-500" /> The Negotiation Trace
            </h2>
            
            <div className="flex-1 overflow-y-auto pr-2 scrollbar-hide flex flex-col gap-6">
-              <NegotiationLog 
-                timestamp="14:22:04.110"
-                controller="Proposed full shutdown of 'cluster-ai-dev' to save $120.00."
-                ciso="Vetoed. Remediation cost of downtime ($5,000) exceeds risk delta."
-                status="VETO STANDS"
-                statusColor="bg-amber-50 text-amber-700 border-amber-300 shadow-sm"
-              />
-               <NegotiationLog 
-                timestamp="14:20:11.050"
-                controller="Proposed downgrade of EC2 instance i-0abcd to t3.medium."
-                ciso="Approved. Negligible compliance impact. Expected savings: $40/mo."
-                status="SOVEREIGN FIX EXECUTED"
-                statusColor="bg-emerald-50 text-emerald-700 border-emerald-300 shadow-sm"
-              />
-               <NegotiationLog 
-                timestamp="14:15:30.900"
-                controller="Identified unencrypted S3 bucket: 'logs-archive'."
-                ciso="Overriding read-only mode to inject AWS KMS AES-256."
-                status="ENFORCED BY POLICY"
-                statusColor="bg-blue-50 text-blue-700 border-blue-300 shadow-sm"
-              />
+              {traceEvents.length === 0 && (
+                <div className="rounded-xl border border-slate-200 bg-white p-4 text-[12px] text-slate-500 font-jetbrains">
+                  Waiting for NarrativeChunk or ForecastSignal events.
+                </div>
+              )}
+
+              {traceEvents.map((event) => {
+                const body = event.message_body || {};
+                const timestamp = String(event.tick_timestamp || '').split('T')[1]?.replace('Z', '') || '--:--:--';
+
+                const isNarrative = event.event_type === 'NarrativeChunk';
+                const controllerText = isNarrative
+                  ? (body.heading || 'Sovereign narrative chunk received.')
+                  : `Forecast ${body.type || 'Advisory'} on ${body.target || 'unknown target'}`;
+
+                const cisoText = isNarrative
+                  ? (body.body || body.citation || 'No explanatory body provided.')
+                  : `P=${typeof body.probability === 'number' ? `${(body.probability * 100).toFixed(1)}%` : 'n/a'} · Predicted=${body.predicted_drift || 'unknown'}${body.recon_chain ? ` · Recon=${body.recon_chain}` : ''}`;
+
+                const statusLabel = isNarrative
+                  ? String(body.chunk_type || 'narrative').toUpperCase()
+                  : String(body.type || 'forecast').toUpperCase();
+
+                const statusKey = isNarrative
+                  ? body.chunk_type
+                  : String(body.type || 'forecast').toLowerCase();
+
+                return (
+                  <NegotiationLog
+                    key={event.event_id}
+                    timestamp={timestamp.slice(0, 12)}
+                    controller={controllerText}
+                    ciso={cisoText}
+                    status={statusLabel}
+                    statusColor={statusColor(statusKey)}
+                  />
+                );
+              })}
            </div>
         </div>
 
-        {/* Right Side: Fast-Pass Countdown (Light theme approach, very striking) */}
         <div className="flex-[1] bg-gradient-to-b from-white/90 to-rose-50/50 rounded-[20px] shadow-sm border border-rose-100 p-6 flex flex-col items-center justify-center text-center relative overflow-hidden">
           <div className="absolute inset-0 opacity-[0.2]" style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent, transparent 10px, #fecdd3 10px, #fecdd3 20px)" }}></div>
           
@@ -65,17 +125,42 @@ export default function FrictionHudView() {
             
             <div className="bg-white border-[4px] border-rose-200 rounded-full w-44 h-44 mx-auto flex items-center justify-center shadow-[0_10px_30px_rgba(244,63,94,0.15)] relative flex-col">
                <span className="text-[64px] font-bold text-slate-800 leading-none font-mono tracking-tighter">
-                 {countdown.toString().padStart(2, '0')}
+                 {countdownValue}
                </span>
                <span className="text-[10px] text-rose-500 font-bold mt-2 uppercase tracking-wider">SEC TO AUTO-KILL</span>
             </div>
 
             <div className="mt-8 bg-white/90 backdrop-blur-sm p-5 rounded-[16px] border border-rose-200 shadow-sm">
-              <div className="text-[14px] font-bold text-slate-800 mb-1 flex justify-center items-center gap-1.5"><ShieldAlert size={14} className="text-rose-500"/> Shadow AI Spawn Detected</div>
-              <div className="text-[11px] text-slate-500 font-mono font-medium">Location: us-east-2/eks-cluster</div>
+              <div className="text-[14px] font-bold text-slate-800 mb-1 flex justify-center items-center gap-1.5"><ShieldAlert size={14} className="text-rose-500"/> {isArmed ? 'Fast-Pass Armed' : 'Awaiting Trigger'}</div>
+              <div className="text-[11px] text-slate-500 font-jetbrains font-medium">Target: {threatInfo?.resource_id || threatInfo?.target || 'n/a'}</div>
+              <div className="text-[11px] text-slate-500 font-jetbrains font-medium mt-1">Window: {isArmed ? `${secondsRemaining}s` : '60s default'}</div>
               <div className="text-[13px] text-emerald-600 font-bold mt-3 border-t border-slate-100 pt-3">
-                Guaranteed Savings: $1,450/mo
+                Estimated Savings: $250 per fast-pass
               </div>
+
+              <button
+                onClick={() => triggerVeto('Manual veto from Friction HUD')}
+                disabled={!isArmed}
+                className={`mt-4 w-full py-2 rounded-lg text-[11px] font-bold border transition-colors ${isArmed ? 'bg-rose-500 text-white border-rose-500 hover:bg-rose-600' : 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'}`}
+              >
+                Trigger Veto
+              </button>
+            </div>
+
+            <div className="mt-4 min-h-[56px]">
+              <AnimatePresence>
+                {dissipatedSignals.map((signal) => (
+                  <motion.div
+                    key={signal.event_id}
+                    initial={{ opacity: 0, scale: 0.9, y: 8 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.6, filter: 'blur(8px)' }}
+                    className="mb-2 px-3 py-2 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200"
+                  >
+                    Dissipated: {signal.message_body?.target || 'unknown target'}
+                  </motion.div>
+                ))}
+              </AnimatePresence>
             </div>
           </div>
         </div>

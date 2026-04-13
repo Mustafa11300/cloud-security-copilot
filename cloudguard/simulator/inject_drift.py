@@ -350,6 +350,17 @@ async def inject_proactive(
         # 3. Predict
         result = forecaster.predict_tick(current_j=0.5)
 
+        # Publish ForecastSignal payloads so the War Room UI receives
+        # proactive advisory/amber events in real time.
+        if redis_client:
+            try:
+                await redis_client.publish(
+                    "cloudguard_events",
+                    json.dumps(result.to_ws_payload()),
+                )
+            except Exception:
+                pass
+
         amber_flag = "🚨 AMBER ALERT" if result.is_amber_alert else "   advisory  "
         shadow_flag = " 👁️  SHADOW-AI" if result.is_shadow_ai else ""
         recon_flag  = f" 🔍 RECON:{result.recon_pattern_name}" if result.recon_pattern_detected else ""
