@@ -4,7 +4,7 @@ FASTAPI SERVER — THE GLUE
 This is the web server that connects:
 - The React frontend (what users see)
 - The AI agent (the brain)
-- Elasticsearch (the memory)
+- In-memory mock data (no external DB required)
 
 Think of it as a restaurant kitchen:
 - Frontend = the dining room (customers)
@@ -31,7 +31,7 @@ app = FastAPI(
 
 load_dotenv()
 
-print("LOADED:", os.getenv("ES_HOST"))
+# Elasticsearch removed — no external DB dependency
 
 
 # Allow React frontend to call this API (CORS = Cross-Origin Resource Sharing)

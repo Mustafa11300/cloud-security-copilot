@@ -7,10 +7,6 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn cloudguard.app:app --host 0.0.0.0 --port $PORT
     envVars:
-      - key: ES_HOST
-        sync: false
-      - key: ES_API_KEY
-        sync: false
       - key: AWS_ACCESS_KEY_ID
         sync: false
       - key: AWS_SECRET_ACCESS_KEY
