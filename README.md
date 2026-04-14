@@ -1,501 +1,650 @@
-# 🛡️ CloudGuard — GenAI-Powered Cloud Security Copilot
+<p align="center">
+  <img src="public/logo.png" alt="CloudGuard Logo" width="80" />
+</p>
 
-![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.110-009688?style=for-the-badge&logo=fastapi&logoColor=white)
-![Elasticsearch](https://img.shields.io/badge/Elasticsearch-8.x-005571?style=for-the-badge&logo=elasticsearch&logoColor=white)
-![Amazon Nova](https://img.shields.io/badge/Amazon_Nova-2_Lite-FF9900?style=for-the-badge&logo=amazonaws&logoColor=white)
-![React](https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react&logoColor=black)
-![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
+<h1 align="center">CloudGuard</h1>
 
----
+<p align="center">
+  <strong>GenAI-Powered Autonomous Cloud Security Governance Platform</strong>
+</p>
 
-## 📋 Table of Contents
+<p align="center">
+  <img src="https://img.shields.io/badge/version-0.3.0-blue?style=flat-square" alt="Version" />
+  <img src="https://img.shields.io/badge/python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python" />
+  <img src="https://img.shields.io/badge/Next.js-16-black?style=flat-square&logo=next.js&logoColor=white" alt="Next.js" />
+  <img src="https://img.shields.io/badge/FastAPI-0.110+-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI" />
+  <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=black" alt="React" />
+  <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License" />
+</p>
 
-- [Overview](#-overview)
-- [Problem Statement](#-problem-statement)
-- [Solution](#-solution)
-- [Architecture](#-architecture)
-- [Tech Stack](#-tech-stack)
-- [Folder Structure](#-folder-structure)
-- [Setup & Installation](#-setup--installation)
-- [Detection Rules](#-detection-rules-logic-focus)
-- [Risk Scoring Formula](#-risk-scoring-formula)
-- [AI Agent — Multi-Step Reasoning](#-ai-agent--multi-step-reasoning)
-- [API Reference](#-api-reference)
-- [Environment Variables](#-environment-variables)
-- [Demo](#-demo)
-- [Troubleshooting](#-troubleshooting)
-- [Submission Checklist](#-submission-checklist)
+<p align="center">
+  <img src="public/landing screenshot.png" alt="CloudGuard Dashboard" width="85%" />
+</p>
 
 ---
 
-## 🎯 Overview
+## Table of Contents
 
-**CloudGuard** is a multi-step AI agent that continuously scans a simulated AWS cloud environment, detects misconfigurations and cost waste, scores overall security posture, and provides natural-language explanations and prioritized remediation guidance through a conversational copilot interface.
-
-| Field | Details |
-|-------|---------|
-| **Hackathons** | Elasticsearch Agent Builder • Amazon Nova AI |
-| **Category** | Agentic AI / Multi-step Reasoning |
-| **License** | MIT Open Source |
-| **Dataset** | 290 simulated AWS resources with injected misconfigurations |
-
----
-
-## 🚨 Problem Statement
-
-> *"Rapid cloud adoption leads to unused resources, misconfigurations, and security gaps, increasing cost and attack surface."*
-
-Cloud teams face:
-
-- 🔴 **Security misconfigurations** — S3 buckets publicly accessible, SSH open to the entire internet, databases with no encryption
-- 💸 **Cost waste** — EC2 instances running at 2% CPU 24/7, paying for nothing
-- 🌊 **Alert fatigue** — engineers drowning in fragmented dashboards with no prioritization
-- 🔁 **Reactive posture** — problems discovered after incidents, never before
-
-No single tool correlates security risk + cost waste + trend analysis + plain-English remediation in one place. CloudGuard is that tool.
+- [Overview](#overview)
+- [Key Features](#key-features)
+- [Architecture](#architecture)
+- [Tech Stack](#tech-stack)
+- [Project Structure](#project-structure)
+- [Getting Started](#getting-started)
+- [API Reference](#api-reference)
+- [Frontend Dashboard](#frontend-dashboard)
+- [Core Engine Deep Dive](#core-engine-deep-dive)
+- [Real-Time Data Flow](#real-time-data-flow)
+- [Testing](#testing)
+- [NIST Compliance](#nist-compliance)
+- [Roadmap](#roadmap)
+- [Contributing](#contributing)
+- [License](#license)
 
 ---
 
-## 💡 Solution
+## Overview
 
-CloudGuard encodes the expertise of a cloud security analyst into a 6-layer pipeline:
+CloudGuard is an autonomous cloud security governance platform that leverages a **multi-agent AI swarm** to detect misconfigurations, forecast threats, and autonomously remediate vulnerabilities — all in real time. It combines cutting-edge concepts from multi-objective optimization, stochastic forecasting, and explainable AI into a unified command center.
 
-1. **Generates** 290 simulated AWS cloud resources (EC2, S3, IAM, Security Groups, RDS) with realistic injected misconfigurations
-2. **Detects** problems using a 15-rule engine — each rule encodes a real security best practice with severity weights and business impact framing
-3. **Scores** overall security posture using a composite weighted penalty formula (0–100)
-4. **Indexes** everything into Elasticsearch across 3 purpose-built indices with ES|QL analytics queries
-5. **Reasons** using Amazon Nova 2 Lite — the agent plans which tools to call, chains them contextually, and synthesizes a prioritized recommendation
-6. **Displays** results through a React dashboard with 4 analytical panels and a conversational copilot chat
+### What It Does
+
+| Capability | Description |
+|------------|-------------|
+| **Detect** | Identifies cloud misconfigurations and configuration drift via simulated SIEM telemetry (VPC flow, CloudTrail, K8s audit logs) |
+| **Forecast** | Predicts emerging threats using a stochastic J-Score cost-risk function with Amber Alert early warnings |
+| **Remediate** | Executes autonomous fixes with a 10-second **Fast-Pass** human-override window before auto-execution |
+| **Audit** | Records every decision through a NIST AI RMF-aligned forensic black-box recorder with full audit trails |
+
+The system runs a continuous simulation loop where specialized agents (**Sentry**, **Controller**, **Orchestrator**) negotiate remediation strategies on a Pareto-optimal frontier, and a sovereign decision engine either auto-executes or defers to human veto.
 
 ---
 
-## 🏗️ Architecture
+## Key Features
+
+### 🛡️ Multi-Agent Swarm Intelligence
+- **Sentry Node** — Threat detection and risk assessment agent
+- **Controller Agent** — Cost optimization and resource efficiency
+- **Orchestrator** — Pareto synthesis with NSGA-II multi-objective optimization
+- **Audit Surgeon** — Compliance verification with jailbreak/code-veto detection
+
+### 📊 Stochastic J-Score Engine
+```
+J = min Σᵢ (w_R · P · Rᵢ + w_C · Cᵢ)
+```
+Multi-objective equilibrium function that balances **risk** vs **cost** across all cloud resources, powered by:
+- Entropy Weight Method (EWM) — Shannon information-theoretic risk prioritization
+- CRITIC weighting — Criteria Importance Through Intercriteria Correlation
+- NetworkX dependency graph centrality for infrastructure topology analysis
+- Fuzzy logic classification with trapezoidal membership functions
+
+### ⚡ Real-Time War Room
+- WebSocket streaming engine (`/ws/war-room`) with 50-event replay buffer
+- 50ms batched event ingestion with deduplication on the frontend
+- Auto-stepper tick loop (~1.5s) driving continuous simulation
+- Exponential backoff reconnection with ping/pong keepalive
+
+### 🔮 Predictive Threat Forecasting
+- Amber Alert system for high-probability emerging threats (P ≥ 0.75)
+- Shadow AI detection for unauthorized model deployments
+- Threat Horizon Overlay with transitive attack-path visualization
+- Signal dissipation tracking when threat probabilities decay
+
+### 🏛️ NIST AI RMF Compliance
+- Full audit trail for every autonomous decision
+- Monotone Invariant verification (J_forecast < J_actual)
+- 1% Execution Floor — prevents action on noise-level drifts
+- CODE_VETO mechanism for adversarial payload interception
+- Downloadable NIST-compliant audit reports
+
+### ⏱️ Fast-Pass Human Override
+- 10-second countdown before autonomous remediation execution
+- One-click veto via REST API from the Liaison Console
+- Full explainability trace showing agent reasoning and ROSI calculations
+
+---
+
+## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                    CloudGuard Architecture                          │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  [Python Faker]  →  [Rule Engine]  →  [Scorer]                     │
-│       ↓                  ↓               ↓                         │
-│  290 Resources      15 Findings    Posture Score                   │
-│                          ↓                                         │
-│              [Elasticsearch Indices]                                │
-│         cloud-resources | security-findings | scan-history         │
-│                          ↓                                         │
-│            [Elastic Agent Builder Tools]                            │
-│     get_critical | get_cost_waste | get_trend | get_top_risks      │
-│                          ↓                                         │
-│              [Amazon Nova 2 Lite]                                  │
-│         Plan → Execute Tools → Contextualize → Synthesize          │
-│                          ↓                                         │
-│               [FastAPI REST API]                                    │
-│          /findings  |  /score  |  /chat                            │
-│                          ↓                                         │
-│              [React Dashboard]                                      │
-│    ScoreCard | FindingsDonut | CostWaste | DriftChart | Copilot    │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                    FRONTEND · Next.js · Port 3000               │
+│  ┌──────────┐ ┌───────────┐ ┌────────────┐ ┌────────────────┐  │
+│  │ Overview  │ │ Iron Dome │ │ Friction   │ │ Liaison        │  │
+│  │ (KPIs)    │ │ (Hex Grid)│ │ HUD (Nego) │ │ Console (XAI)  │  │
+│  └─────┬────┘ └─────┬─────┘ └──────┬─────┘ └───────┬────────┘  │
+│        │             │              │               │           │
+│        └─────────────┴──────────────┴───────────────┘           │
+│                  WebSocket + REST (hooks)                        │
+└───────────────────────────┬─────────────────────────────────────┘
+                            │
+                   ┌────────┴────────┐
+                   │  BACKEND · FastAPI · Port 8000                │
+                   │                                               │
+                   │  ┌─────────────────────────────────────────┐  │
+                   │  │  Auto Stepper (1.5s tick loop)          │  │
+                   │  │  ├── Simulation Engine (drift inject)   │  │
+                   │  │  ├── Threat Forecaster (Amber Alerts)   │  │
+                   │  │  ├── Agent Swarm (negotiate)            │  │
+                   │  │  └── Narrative Engine (XAI chunks)      │  │
+                   │  └─────────────────────────────────────────┘  │
+                   │                                               │
+                   │  ┌──────────────┐  ┌────────────────────────┐ │
+                   │  │ Math Engine  │  │ Decision Logic         │ │
+                   │  │ (J-Score,    │  │ (Sovereign Execute     │ │
+                   │  │  EWM, CRITIC,│  │  vs Human Defer)       │ │
+                   │  │  ROSI, ALE)  │  │                        │ │
+                   │  └──────────────┘  └────────────────────────┘ │
+                   │                                               │
+                   │  ┌──────────────┐  ┌────────────────────────┐ │
+                   │  │ Collision    │  │ State Branch Manager   │ │
+                   │  │ Manager      │  │ (A/B testing, rollback)│ │
+                   │  └──────────────┘  └────────────────────────┘ │
+                   └───────────────────────────────────────────────┘
+                            │
+                   ┌────────┴────────┐
+                   │  INFRASTRUCTURE                               │
+                   │  ├── Redis (pub/sub event bus)                │
+                   │  ├── PostgreSQL + TimescaleDB (persistence)   │
+                   │  └── Docker Compose                           │
+                   └───────────────────────────────────────────────┘
 ```
 
 ---
 
-## 🔧 Tech Stack
+## Tech Stack
 
-| Layer | Technology | Purpose |
-|-------|-----------|---------|
-| **Data Generation** | Python + Faker | 290 fake AWS resources with injected misconfigs |
-| **Rule Engine** | Pure Python | 15 detection rules with severity + business impact |
-| **Scoring** | Pure Python | Composite weighted penalty formula |
-| **Database** | Elasticsearch 8.x | 3 indices, ES\|QL analytics, vector KB |
-| **Agent Orchestration** | Elastic Agent Builder | 6 named tools backed by ES queries |
-| **AI Reasoning** | Amazon Nova 2 Lite | Multi-step tool planning + synthesis |
-| **Backend** | FastAPI + Python | REST API connecting all layers |
-| **Frontend** | React + Tailwind + Recharts | Dashboard + conversational UI |
+### Backend
+| Technology | Purpose |
+|------------|---------|
+| **Python 3.11+** | Core language |
+| **FastAPI** | REST API + WebSocket server |
+| **Uvicorn** | ASGI server |
+| **Pydantic v2** | Data validation and schema enforcement |
+| **NumPy** | J-Score optimization and statistical computations |
+| **NetworkX** | Dependency graph analysis and betweenness centrality |
+| **Redis** | Pub/sub event bus (graceful fallback if unavailable) |
+| **PostgreSQL + TimescaleDB** | Persistent storage (optional, Docker Compose provided) |
+
+### Frontend
+| Technology | Purpose |
+|------------|---------|
+| **Next.js 16** | React framework with App Router |
+| **React 19** | UI library |
+| **Framer Motion** | Animations and micro-interactions |
+| **Recharts** | Data visualization (charts, graphs) |
+| **Lucide React** | Icon system |
+| **Tailwind CSS v4** | Utility-first styling |
 
 ---
 
-## 📁 Folder Structure
+## Project Structure
 
 ```
 cloud-security-copilot/
+├── cloudguard/                      # ─── BACKEND (Python / FastAPI) ───
+│   ├── app.py                       # Unified FastAPI server entry point
+│   ├── __init__.py                  # Package metadata (v0.1.0)
+│   │
+│   ├── api/                         # HTTP & WebSocket interfaces
+│   │   ├── routes.py                # REST endpoints (/api/v2/*)
+│   │   ├── streamer.py              # WebSocket /ws/war-room + event buffer
+│   │   ├── auto_stepper.py          # Background tick loop (drives simulation)
+│   │   └── narrative_engine.py      # NarrativeChunk explainability events
+│   │
+│   ├── core/                        # Core business logic
+│   │   ├── math_engine.py           # J-Score, EWM, CRITIC, ROSI, ALE, fuzzy logic
+│   │   ├── decision_logic.py        # Sovereign decision: auto-execute vs defer
+│   │   ├── remediation.py           # Remediation protocol (command pattern)
+│   │   ├── collision_manager.py     # Prevents conflicting concurrent remediations
+│   │   ├── audit_reporter.py        # NIST AI RMF-aligned audit report generator
+│   │   ├── scheduler.py             # Task scheduling
+│   │   ├── clock.py                 # Temporal clock (Tick / Epoch / Cycle / Burst)
+│   │   ├── schemas.py               # Pydantic models (UniversalResource, DriftEvent, etc.)
+│   │   ├── swarm.py                 # Swarm coordination (CISO, Controller, Orchestrator)
+│   │   └── tasks.py                 # Background task definitions
+│   │
+│   ├── agents/                      # Multi-agent swarm
+│   │   ├── swarm.py                 # Agent orchestration logic
+│   │   ├── sentry_node.py           # Threat detection & risk assessment
+│   │   └── audit_surgeon.py         # Compliance verification & CODE_VETO
+│   │
+│   ├── forecaster/                  # Threat forecasting subsystem
+│   │   ├── threat_forecaster.py     # Amber Alert generation (P ≥ 0.75)
+│   │   ├── forecaster.py            # Base forecaster logic
+│   │   ├── validation_queue.py      # Forecast validation pipeline
+│   │   └── dissipation_handler.py   # Signal decay tracking
+│   │
+│   ├── simulation/                  # Simulation engine
+│   │   ├── engine.py                # Core SimulationEngine orchestrator
+│   │   ├── telemetry.py             # SIEM telemetry generator (VPC, CloudTrail, K8s)
+│   │   └── chaos_monkey.py          # Drift injection for stress testing
+│   │
+│   ├── simulator/                   # Advanced simulation scenarios
+│   │   ├── amber_sequence_generator.py  # Amber Alert sequence testing
+│   │   ├── chaos_monkey.py          # Extended chaos scenarios
+│   │   └── inject_drift.py          # Manual drift injection tools
+│   │
+│   ├── graph/
+│   │   └── state_machine.py         # Governance state machine (FSM)
+│   │
+│   ├── infra/                       # Infrastructure layer
+│   │   ├── branch_manager.py        # State branch management (A/B testing)
+│   │   ├── memory_service.py        # H-MEM in-memory knowledge store
+│   │   └── redis_bus.py             # Redis pub/sub + SIEM log emulator
+│   │
+│   └── kernel/
+│       └── main.py                  # Kernel entry point
 │
-├── backend/
-│   ├── main.py                     # FastAPI entry point
-│   ├── requirements.txt            # Python dependencies
-│   ├── bootstrap.py                # One-shot setup script
-│   ├── test_connections.py         # Verify ES + Nova before running
-│   ├── .env                        # Secrets (never commit this!)
+├── src/                             # ─── FRONTEND (Next.js / React) ───
+│   ├── app/
+│   │   ├── layout.js                # Root layout (Inter font, metadata)
+│   │   ├── page.js                  # Landing page
+│   │   ├── globals.css              # Global styles
+│   │   └── dashboard/
+│   │       ├── layout.js            # Dashboard shell (sidebar navigation)
+│   │       ├── page.js              # Overview — Temporal Command Center
+│   │       ├── findings/page.js     # Iron Dome — Hex Grid Topology
+│   │       ├── cost/page.js         # Friction HUD — Agent Negotiation
+│   │       ├── copilot/page.js      # Liaison Console — Explainability
+│   │       ├── logs/page.js         # NIST Sovereign Audit Logs
+│   │       └── settings/page.js     # Settings
 │   │
-│   ├── data/
-│   │   └── generator.py            # Generates 290 fake AWS resources ⭐
+│   ├── components/
+│   │   ├── dashboard/
+│   │   │   ├── views/               # Page-level view components
+│   │   │   │   ├── TemporalCommandCenter.js
+│   │   │   │   ├── IronDomeView.js
+│   │   │   │   ├── FrictionHudView.js
+│   │   │   │   ├── LiaisonConsoleView.js
+│   │   │   │   ├── SovereignAuditLogs.js
+│   │   │   │   └── SettingsView.js
+│   │   │   └── components/          # Reusable UI components
+│   │   │       ├── MetricCard.js
+│   │   │       ├── RiskItem.js
+│   │   │       ├── HoneycombCell.js
+│   │   │       ├── NegotiationLog.js
+│   │   │       ├── AuditRow.js
+│   │   │       ├── LogTerminalItem.js
+│   │   │       └── SidebarItem.js
+│   │   └── landing/
+│   │       ├── NavBar.js
+│   │       ├── FeatureCard.js
+│   │       ├── PricingRow.js
+│   │       └── AnimatedWorkflowPipeline.js
 │   │
-│   ├── engine/                     # ⭐ THE LOGIC CORE
-│   │   ├── rules.py                # 15 misconfiguration detection rules
-│   │   └── scorer.py               # Composite risk scoring formula
-│   │
-│   ├── elastic/
-│   │   ├── client.py               # Elasticsearch connection
-│   │   ├── indexer.py              # Pushes data into ES indices
-│   │   └── queries.py              # Named ES|QL business queries
-│   │
-│   ├── agent/
-│   │   ├── tools.py                # 6 agent tools backed by ES
-│   │   └── copilot.py              # Nova 2 Lite multi-step agent
-│   │
-│   └── api/
-│       ├── findings.py             # GET /api/findings/*
-│       ├── score.py                # GET /api/score/
-│       └── chat.py                 # POST /api/chat/
+│   └── lib/                         # Hooks & API client
+│       ├── useSovereignStream.js     # WebSocket hook (real-time + dedup + batch)
+│       ├── useMetricData.js          # REST polling (5s interval) + manual refetch()
+│       ├── useFastPassTimer.js       # Fast-Pass 10s countdown + veto trigger
+│       └── api.js                    # REST client wrapper
 │
-├── frontend/
-│   ├── package.json
-│   └── src/
-│       ├── App.jsx                 # Root dashboard component
-│       └── components/
-│           ├── ScoreCard.jsx       # Security posture score (big number)
-│           ├── FindingsChart.jsx   # Donut chart by severity
-│           ├── CostWaste.jsx       # Bar chart of wasted money
-│           ├── DriftChart.jsx      # Line chart — score over time
-│           └── CopilotChat.jsx     # Conversational AI interface
+├── tests/                           # Test suite
+│   ├── test_phase1.py               # Phase 1 Foundation tests
+│   ├── test_phase2_stress.py        # Multi-agent swarm stress tests
+│   ├── test_phase4_validation_suite.py  # Full validation suite
+│   ├── test_hmem_amnesia_cure.py    # H-MEM memory service tests
+│   ├── test_copilot.py              # Copilot integration tests
+│   └── test_routing.py              # API routing tests
 │
-└── README.md
+├── docker-compose.yml               # PostgreSQL + TimescaleDB + Redis
+├── pyproject.toml                   # Python project configuration
+├── requirements.txt                 # Python dependencies
+├── package.json                     # Node.js dependencies
+├── .env                             # Environment variables (gitignored)
+├── .gitignore                       # Git ignore rules
+└── sovereign_safety_report.md       # NIST AI RMF compliance report
 ```
 
 ---
 
-## 🚀 Setup & Installation
+## Getting Started
 
 ### Prerequisites
 
-- Python 3.10+
-- Node.js 18+
-- [Elasticsearch Cloud](https://cloud.elastic.co) account (free trial)
-- [AWS account](https://aws.amazon.com/free) with Bedrock Nova Lite enabled in `us-east-1`
+| Requirement | Version |
+|-------------|---------|
+| Python | 3.11+ |
+| Node.js | 18+ |
+| npm | 9+ |
+| Docker (optional) | For Redis & PostgreSQL |
 
----
-
-### Step 1 — Clone & Install
+### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/your-username/cloud-security-copilot
-cd cloud-security-copilot/backend
-python -m venv venv
-source venv/bin/activate          # Windows: venv\Scripts\activate
+git clone https://github.com/Mustafa11300/cloud-security-copilot.git
+cd cloud-security-copilot
+```
+
+### 2. Set Up the Backend
+
+```bash
+# Create and activate a virtual environment
+python -m venv .venv
+source .venv/bin/activate  # macOS/Linux
+# .venv\Scripts\activate   # Windows
+
+# Install dependencies
 pip install -r requirements.txt
+
+# Start the backend server
+uvicorn cloudguard.app:app --port 8000
 ```
 
----
+> [!WARNING]
+> **Do NOT use the `--reload` flag** — it causes duplicate auto-stepper background tasks resulting in double event emissions.
 
-### Step 2 — Create `__init__.py` files
+### 3. Set Up the Frontend
 
 ```bash
-touch api/__init__.py engine/__init__.py elastic/__init__.py agent/__init__.py data/__init__.py
+# Install Node.js dependencies
+npm install
+
+# Start the development server
+npm run dev
 ```
 
----
+The frontend will be available at **http://localhost:3000**.
 
-### Step 3 — Configure `.env`
+### 4. Environment Variables
 
-Create `backend/.env`:
+Create a `.env` file in the project root:
 
 ```env
-# Elasticsearch
-ES_HOST=https://your-deployment.es.us-central1.gcp.elastic.cloud:443
-ES_API_KEY=your-encoded-elastic-api-key
+# Frontend → Backend connection
+NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_WS_URL=ws://localhost:8000/ws/war-room
 
-# AWS (IAM credentials with Bedrock access)
-AWS_ACCESS_KEY_ID=AKIA...
-AWS_SECRET_ACCESS_KEY=your-secret-key
+# Optional: Gemini API (for LLM-powered narratives)
+GOOGLE_API_KEY=your_gemini_api_key
+
+# Optional: AWS (for real cloud integration)
+AWS_ACCESS_KEY_ID=your_aws_key
+AWS_SECRET_ACCESS_KEY=your_aws_secret
 AWS_REGION=us-east-1
+
+# Optional: Elasticsearch
+ES_HOST=your_elasticsearch_host
+ES_API_KEY=your_elasticsearch_api_key
 ```
 
-> ⚠️ **Never commit `.env` to Git.** It's already in `.gitignore`.
-
----
-
-### Step 4 — Test Connections
+### 5. Infrastructure (Optional)
 
 ```bash
-cd backend
-python test_connections.py
+# Start PostgreSQL + TimescaleDB + Redis
+docker-compose up -d
 ```
 
-Expected output:
-```
-Testing Elasticsearch...
-✅ Elasticsearch connected!
-   Cluster: your-cluster-name
-
-Testing AWS Bedrock (Nova)...
-✅ Nova connected! Response: 'Hello there, how are you!'
-```
+> [!NOTE]
+> The backend **gracefully degrades** if Redis or PostgreSQL are unavailable — all subsystems fall back to in-memory operation.
 
 ---
 
-### Step 5 — Bootstrap Data
+## API Reference
+
+### REST Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/` | `GET` | Health check — confirms server is running |
+| `/api/v2/health` | `GET` | Detailed health with subsystem status and war room stats |
+| `/api/v2/simulation/state` | `GET` | Current simulation state snapshot |
+| `/api/v2/simulation/step` | `POST` | Manually advance simulation by one tick |
+| `/api/v2/math/j-score` | `GET` | Current J-Score breakdown (per-resource + Pareto front) |
+| `/api/v2/math/j-history` | `GET` | Full J-Score history over time |
+| `/api/v2/branches` | `GET` | State branch tree (trunk + experiment branches) |
+| `/api/v2/events/audit-report` | `GET` | Download NIST-compliant audit report |
+| `/api/v2/events/metrics` | `GET` | Compliance metrics and economics |
+| `/api/v2/events/veto` | `POST` | Manual operator veto (cancels Fast-Pass) |
+| `/docs` | `GET` | Interactive Swagger UI |
+| `/redoc` | `GET` | ReDoc API documentation |
+
+### WebSocket
+
+| Endpoint | Protocol | Description |
+|----------|----------|-------------|
+| `/ws/war-room` | `WebSocket` | Real-time bidirectional event stream |
+
+**On connect**, the server sends:
+1. **BufferReplay** — Last 50 events for instant UI hydration
+2. **TopologySync** — Current resource status map (Green/Yellow/Red)
+
+**Emitted event types:**
+
+| Event Type | Source | Description |
+|------------|--------|-------------|
+| `ForecastSignal` | Threat Forecaster | Amber Alerts and threat predictions |
+| `NarrativeChunk` | Narrative Engine | Agent reasoning traces with XAI |
+| `Remediation` | Decision Logic | Fix applied (success/failure + J delta) |
+| `TopologySync` | Simulation Engine | Resource status snapshot |
+| `TickerUpdate` | Auto Stepper | J-Score + weight changes |
+| `SwarmCoolingDown` | Swarm | API quota exceeded, backoff active |
+| `Heartbeat` | Streamer | 15-second keepalive ping |
+| `BufferReplay` | Streamer | Initial event replay for new clients |
+
+---
+
+## Frontend Dashboard
+
+### Design System
+
+- **Theme**: Cyber-Obsidian — light glassmorphism, soft blues, white cards, premium feel
+- **Typography**: Inter (Google Fonts)
+- **Animations**: Framer Motion with micro-interactions
+- **Layout**: Collapsible sidebar (icon navigation) + responsive main content area
+
+### Views
+
+| View | Route | Description |
+|------|-------|-------------|
+| **Landing Page** | `/` | Product showcase with animated workflow pipeline, feature cards, and pricing tiers |
+| **Overview** | `/dashboard` | Temporal Command Center — KPI metric cards, risk horizon, live event feed, active remediations |
+| **Iron Dome** | `/dashboard/findings` | Interactive hex-grid topology map showing resource health (Green/Yellow/Red/Amber) |
+| **Friction HUD** | `/dashboard/cost` | Agent negotiation visualization + Fast-Pass countdown timer with savings breakdown |
+| **Liaison Console** | `/dashboard/copilot` | Explainability feed with J-Score trace, agent reasoning, ROSI calculation, and veto button |
+| **Audit Logs** | `/dashboard/logs` | NIST forensic recorder with terminal-style log viewer and report download |
+| **Settings** | `/dashboard/settings` | Configuration panel |
+
+### Custom React Hooks
+
+| Hook | Type | Description |
+|------|------|-------------|
+| `useSovereignStream()` | WebSocket | Real-time events with 50ms batched flushing, dedup by `event_id`, exponential backoff reconnect |
+| `useMetricData()` | REST | 5-second polling for compliance metrics and J-history with manual `refetch()` |
+| `useFastPassTimer()` | Derived | 10-second countdown derived from `NarrativeChunk` events, triggers veto via REST |
+
+---
+
+## Core Engine Deep Dive
+
+### Simulation Engine
+
+The `SimulationEngine` is the central orchestrator that wires together all subsystems:
+
+```python
+engine = SimulationEngine(seed=42)
+engine.initialize()  # Generates 345 resources with 40% wasteful baseline
+
+for _ in range(100):
+    report = engine.step()  # Advances one tick
+    print(f"Tick {report.tick}: J={report.j_percentage}% Governed")
+```
+
+**Each tick:**
+1. Advances the temporal clock (standard or burst mode)
+2. Injects drift events with 5% probability per standard tick
+3. Generates SIEM telemetry (VPC flow logs, CloudTrail events, K8s audit logs)
+4. Runs agent swarm negotiation if drift detected
+5. Calculates new J-Score equilibrium
+6. Executes self-correction check (rollback if J worsened)
+
+### J-Score Optimization
+
+The equilibrium function minimizes a weighted sum across all cloud resources:
+
+| Variable | Description |
+|----------|-------------|
+| `w_R` | Risk weight (Sentry preference) |
+| `w_C` | Cost weight (Controller preference) |
+| `P` | Probability of threat materialization |
+| `R_i` | Risk impact of resource _i_ |
+| `C_i` | Remediation cost for resource _i_ |
+
+**Interpretation:**
+- `J = 0.0` → Perfectly governed (all risk and cost minimized)
+- `J = 1.0` → Worst governance state
+- `J%` → `(1 - J) × 100` expressed as "% Governed"
+
+### Economic Analysis
+
+| Metric | Formula | Academic Reference |
+|--------|---------|-------------------|
+| **ROSI** | `(ALE_before - ALE_after - Cost) / Cost` | Gordon & Loeb (2002) |
+| **ALE** | `Asset_Value × Exposure_Factor × ARO` | Standard risk model |
+| **Break-Even** | `Remediation_Cost / (Monthly_Savings)` | Time-to-ROI |
+
+### Weighting Methods
+
+| Method | Based On | Purpose |
+|--------|----------|---------|
+| **EWM** (Entropy Weight) | Shannon Entropy (1948) | High entropy → less discriminating → lower weight |
+| **CRITIC** | Diakoulaki et al. (1995) | Combines standard deviation with inter-criteria correlation |
+| **Combined** | `α · EWM + (1-α) · CRITIC` | Blended weighting with tunable alpha |
+
+---
+
+## Real-Time Data Flow
+
+```
+┌─────────────────┐    Every ~1.5s    ┌───────────────────┐
+│  Auto Stepper   │ ───────────────── │ Simulation Engine │
+│  (tick loop)    │                   │ (advance_tick)    │
+└────────┬────────┘                   └────────┬──────────┘
+         │                                     │
+         │  telemetry events                   │  drift injection
+         ▼                                     ▼
+┌─────────────────┐                   ┌───────────────────┐
+│  Agent Swarm    │ ◄──── negotiate ──│ Threat Forecaster │
+│  (CISO + Ctrl   │                   │ (Amber Alerts)    │
+│   + Orch)       │                   └───────────────────┘
+└────────┬────────┘
+         │  NarrativeChunks + Decision
+         ▼
+┌─────────────────┐    broadcast()    ┌───────────────────┐
+│  WebSocket      │ ─────────────────▶│  React Frontend   │
+│  Streamer       │   JSON events     │  (batch + dedup   │
+│  (/ws/war-room) │                   │   + setState)     │
+└─────────────────┘                   └───────────────────┘
+         ▲                                     │
+         │  POST /api/v2/events/veto           │
+         └─────────────────────────────────────┘
+```
+
+### Event Priority Chain
+
+| Priority | Event | Action |
+|----------|-------|--------|
+| 🔴 **P0** | Amber Alert (P ≥ 0.75) | Immediate Fast-Pass countdown |
+| 🟠 **P1** | Critical Drift (PUBLIC_EXPOSURE, PERMISSION_ESCALATION) | Burst mode + swarm debate |
+| 🟡 **P2** | High Drift (ENCRYPTION_REMOVED, NETWORK_RULE_CHANGE) | Standard remediation |
+| 🟢 **P3** | Medium/Low Drift | Logged, may be filtered by 1% floor |
+
+---
+
+## Testing
+
+The project includes a comprehensive test suite covering all phases:
 
 ```bash
-python bootstrap.py
+# Run all tests
+pytest tests/ -v
+
+# Run specific test phases
+pytest tests/test_phase1.py -v            # Foundation subsystems
+pytest tests/test_phase2_stress.py -v     # Multi-agent stress test
+pytest tests/test_phase4_validation_suite.py -v  # Full validation
+pytest tests/test_hmem_amnesia_cure.py -v # Memory service tests
+
+# Run the sovereign core integration test
+python sovereign_core_test.py
 ```
 
-This single command:
-- Creates 3 Elasticsearch indices
-- Generates 290 simulated AWS resources
-- Runs the 15-rule detection engine
-- Indexes all resources and findings into ES
-- Saves the first scan snapshot for trend tracking
+### Test Coverage
 
-Expected output:
-```
-1️⃣  Creating Elasticsearch indices...
-2️⃣  Generating simulated cloud dataset... ✅ 290 resources
-3️⃣  Running security rule engine... 🔴 CRITICAL: 25  🟠 HIGH: 40
-4️⃣  Indexing resources...
-5️⃣  Indexing findings...
-6️⃣  Saving scan snapshot...
-✅ Bootstrap complete!
-   Security Score:  42/100
-   Total Findings:  128
-   Monthly Waste:   $485.32
-```
+| Test Suite | Scope | Tests |
+|------------|-------|-------|
+| `test_phase1.py` | SimulationEngine, MathEngine, Clock, Schemas, BranchManager | Foundation |
+| `test_phase2_stress.py` | Swarm negotiation, ChaosMonkey, CollisionManager, ROSI | Stress |
+| `test_phase4_validation_suite.py` | Full pipeline: Drift → Forecast → Negotiate → Remediate → Audit | Integration |
+| `test_hmem_amnesia_cure.py` | H-MEM memory persistence, recall accuracy | Memory |
+| `sovereign_core_test.py` | End-to-end sovereign engine validation | E2E |
 
 ---
 
-### Step 6 — Start the API Server
+## NIST Compliance
 
-```bash
-cd backend
-uvicorn main:app --reload
-```
+CloudGuard implements verification against the **NIST AI Risk Management Framework (AI RMF)**:
 
-- API: `http://localhost:8000`
-- Swagger docs: `http://localhost:8000/docs`
+| # | Behavior | RMF Category | Status |
+|---|----------|-------------|--------|
+| 1 | Monotone Invariant (J_forecast < J_actual) | `MEASURE-2.1` Robustness | ✅ |
+| 2 | 1% Execution Floor (no action on noise) | `MEASURE-2.2` Reliability | ✅ |
+| 3 | Jailbreak Detection (CODE_VETO) | `GOVERN-1.3` Robustness | ✅ |
+| 4 | J-Function Normalization Stability | `MEASURE-2.1` Reliability | ✅ |
+| 5 | Chaos Monkey Stress Resilience | `MEASURE-2.2` Robustness | ✅ |
+| 6 | Predictive Amber Alert Accuracy | `MAP-2.1` Explainability | ✅ |
+| 7 | Drift Type Distribution Bias Check | `MANAGE-4.1` Bias | ✅ |
+| 8 | Dialectical Truth Log (full audit) | `GOVERN-6.1` Explainability | ✅ |
 
----
-
-### Step 7 — Start the Frontend
-
-```bash
-cd frontend
-npm install
-npm start
-```
-
-Dashboard: `http://localhost:3000`
+Full report available in [`sovereign_safety_report.md`](sovereign_safety_report.md).
 
 ---
 
-## 🔍 Detection Rules (Logic Focus)
+## Roadmap
 
-> The rule engine is the core of the project. Each rule encodes a real security best practice with documented thresholds and business impact framing. **Judges: this is where the logic lives.**
+### ✅ Completed
 
-| Rule ID | Rule Name | Severity | Score | Logic Threshold |
-|---------|-----------|----------|-------|-----------------|
-| `EC2-001` | Underutilized EC2 Instance | MEDIUM | -45 | `cpu_avg < 5%` AND `running_hours > 168` → 85% of cost is waste |
-| `EC2-002` | Missing Purpose Tag | LOW | -20 | `has_purpose_tag == False` → cannot allocate cost or ownership |
-| `S3-001` | **S3 Publicly Accessible** | 🔴 CRITICAL | -95 | `public_access_blocked == False` → anyone on internet reads your files |
-| `S3-002` | S3 Encryption Disabled | HIGH | -70 | `encryption_enabled == False` → fails PCI-DSS, HIPAA, SOC2 |
-| `S3-003` | S3 Access Logging Disabled | MEDIUM | -40 | `logging_enabled == False` → no audit trail for data access |
-| `IAM-001` | **MFA Not Enabled** | HIGH | -75 | `mfa_enabled == False` → stolen password = full account access |
-| `IAM-002` | Inactive User 90+ Days | MEDIUM | -50 | `days_since_last_login > 90` → ghost door into system |
-| `IAM-003` | Admin Policy Attached | HIGH | -80 | `has_admin_policy == True` → violates least-privilege principle |
-| `IAM-004` | Access Key Not Rotated | MEDIUM | -45 | `access_key_age_days > 90` → stale key, long exposure window |
-| `SG-001` | **SSH Open to Internet** | 🔴 CRITICAL | -90 | `port 22` + `source 0.0.0.0/0` → brute force & exploit target |
-| `SG-002` | **RDP Open to Internet** | 🔴 CRITICAL | -90 | `port 3389` + `source 0.0.0.0/0` → #1 ransomware initial access vector |
-| `SG-003` | Database Port Exposed | HIGH | -85 | `ports 3306/5432/27017` + `0.0.0.0/0` → direct database access |
-| `RDS-001` | **RDS Publicly Accessible** | 🔴 CRITICAL | -88 | `publicly_accessible == True` → database reachable from internet |
-| `RDS-002` | RDS Encryption Disabled | HIGH | -72 | `encryption_at_rest == False` → plain text database storage |
-| `RDS-003` | RDS Backups Disabled | HIGH | -65 | `backup_enabled == False` → ransomware = permanent data loss |
+| Phase | Name | Key Deliverables |
+|-------|------|-----------------|
+| **Phase 1** | Research-Valid Foundation | SimulationEngine, MathEngine (J-Score, EWM, CRITIC), TemporalClock, StateBranchManager, Pydantic schemas, SIEM telemetry |
+| **Phase 2** | Multi-Agent Swarm | Sentry Node, Controller Agent, Orchestrator (Pareto/NSGA-II), ChaosMonkey, CollisionManager |
+| **Phase 3** | War Room Streaming | WebSocket `/ws/war-room`, Auto Stepper, NarrativeEngine, ping/pong keepalive, backoff reconnection |
+| **Phase 4** | Frontend Dashboard | Landing page, 6-view dashboard, real-time WebSocket, T-Minus Sync, Fast-Pass veto, NIST audit download |
 
-### Why These Thresholds?
+### 🔜 Upcoming
 
-- **5% CPU = idle:** Industry standard for "underutilized" (AWS Trusted Advisor uses the same)
-- **90 days = inactive:** CIS Benchmark v1.4 for IAM user lifecycle management
-- **168 hours (1 week):** Minimum run time to confirm waste isn't a fluke
-- **0.0.0.0/0:** CIDR notation for "entire internet" — always dangerous for sensitive ports
+| Phase | Name | Key Tasks |
+|-------|------|-----------|
+| **Phase 5** | Production Hardening | Redis pub/sub for multi-instance, PostgreSQL persistence, JWT auth (Operator/CISO/Viewer roles), rate limiting, Prometheus + Grafana |
+| **Phase 6** | Real Cloud Integration | AWS connector (EC2, S3, IAM, SecurityHub), Azure Policy + Defender, GCP Security Command Center, Terraform state drift detection |
+| **Phase 7** | LLM Integration | Gemini/GPT-powered narratives (replace rule-based), RAG pipeline (NIST, CIS, SOC2 frameworks), NL-validated veto reasons |
+| **Phase 8** | Threat Horizon Overlay | Predictive probability overlay on Iron Dome, attack-path lateral movement visualization, historical state replay/scrubbing |
 
 ---
 
-## 📊 Risk Scoring Formula
+## Contributing
 
-The Security Posture Score is a single **0–100** number computed using a weighted penalty system:
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/your-feature`)
+3. Commit your changes (`git commit -m 'feat: add your feature'`)
+4. Push to the branch (`git push origin feature/your-feature`)
+5. Open a Pull Request
 
-```
-Score = max(0, 100 − (CRITICAL × 20) − (HIGH × 10) − (MEDIUM × 5) − (LOW × 2))
-```
+### Branch Strategy
 
-### Why These Weights?
-
-| Severity | Penalty | Rationale |
-|----------|---------|-----------|
-| CRITICAL | −20 pts | Immediate breach risk — data exposure or account takeover possible right now |
-| HIGH | −10 pts | Significant attack surface — exploitable with moderate effort |
-| MEDIUM | −5 pts | Compliance gaps and best practice violations |
-| LOW | −2 pts | Hygiene issues — no immediate risk but should be resolved |
-
-### Score Tiers
-
-| Score | Tier | Meaning |
-|-------|------|---------|
-| 80–100 | 🟢 GOOD | Healthy posture. Continue monitoring. |
-| 60–79 | 🟡 FAIR | Notable issues. Schedule remediation within 30 days. |
-| 40–59 | 🟠 POOR | Significant vulnerabilities. Prioritize immediately. |
-| 0–39 | 🔴 CRITICAL | Immediate action required. Active exposure detected. |
+| Branch | Purpose |
+|--------|---------|
+| `main` | Stable release |
+| `testing` | Active development and integration |
 
 ---
 
-## 🤖 AI Agent — Multi-Step Reasoning
+## License
 
-The Nova 2 Lite agent follows a **4-step reasoning pipeline** for every query:
-
-```
-User Query
-    ↓
-Step 1: PLAN   → Nova reads query, selects 2–4 relevant tools from registry
-    ↓
-Step 2: EXECUTE → Each tool queries Elasticsearch, returns structured data
-    ↓
-Step 3: CONTEXTUALIZE → All tool results concatenated into rich context
-    ↓
-Step 4: SYNTHESIZE → Nova reasons over full context, generates prioritized answer
-    ↓
-Business-Language Response with Priority Actions
-```
-
-### Available Tools
-
-| Tool | ES Query | Answers |
-|------|----------|---------|
-| `get_critical_findings` | security-findings index, severity=CRITICAL | What are my most dangerous issues? |
-| `get_high_findings` | security-findings index, severity=HIGH | What needs fixing this week? |
-| `get_cost_waste` | findings with rule_id=EC2-001 | How much money am I wasting? |
-| `get_risk_trend` | scan-history index, last N days | Is my posture getting better or worse? |
-| `get_top_risks` | Top N by risk_score desc | Which specific resources need attention first? |
-| `get_resource_type_breakdown` | ES aggregation by resource_type | Which resource type has the most problems? |
-
-### Example Agent Interaction
-
-```
-User: "What should I fix first?"
-
-Agent Step 1 → Plans: ["get_critical_findings", "get_top_risks", "get_risk_trend"]
-Agent Step 2 → Executes all 3 tools against Elasticsearch
-Agent Step 3 → Builds context from 3 tool results
-Agent Step 4 → Synthesizes:
-
-## Summary
-Your environment has 3 critical exposures requiring immediate action.
-Security score is 42/100 (POOR) and has declined 8 points in 7 days.
-
-## Key Findings
-1. S3 bucket s3-customer-data-482 is publicly accessible (50,000 objects exposed)
-2. Security group sg-a1b2c3d4 has SSH port 22 open to 0.0.0.0/0
-3. RDS database rds-prod-main is publicly accessible
-
-## Priority Actions
-1. TODAY: Block public access on s3-customer-data-482 (S3 Console → Permissions → Block Public Access)
-2. THIS WEEK: Restrict SSH to VPN subnet only in sg-a1b2c3d4
-3. THIS MONTH: Set RDS publicly_accessible=false and enable encryption
-```
+This project is licensed under the **MIT License**. See [`pyproject.toml`](pyproject.toml) for details.
 
 ---
 
-## 🔌 API Reference
-
-All endpoints served at `http://localhost:8000`. Full docs at `/docs`.
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/score/` | Current security score + cost health + monthly waste |
-| `GET` | `/api/score/trend` | Score history for drift chart (`?days=7`) |
-| `GET` | `/api/findings/summary` | Finding counts by severity — drives donut chart |
-| `GET` | `/api/findings/critical` | All CRITICAL findings with full remediation details |
-| `GET` | `/api/findings/top` | Top N highest risk_score findings (`?limit=10`) |
-| `GET` | `/api/findings/by-type` | ES aggregation: findings grouped by resource type |
-| `POST` | `/api/chat/` | Body: `{"message": "..."}` — runs Nova agent, returns reasoning + answer |
-
-### Example Chat Request
-
-```bash
-curl -X POST http://localhost:8000/api/chat/ \
-  -H "Content-Type: application/json" \
-  -d '{"message": "What are my top 3 security risks?"}'
-```
-
----
-
-## ⚙️ Environment Variables
-
-| Variable | Example | How to Get It |
-|----------|---------|---------------|
-| `ES_HOST` | `https://abc.es.us-central1.gcp.elastic.cloud:443` | Elastic Cloud → Deployment → Copy endpoint (swap `kb` → `es`, add `:443`) |
-| `ES_API_KEY` | `dGVzdDp0ZXN0MTIz==` | Kibana → Stack Management → API Keys → Create → copy **Encoded** value |
-| `AWS_ACCESS_KEY_ID` | `AKIAIOSFODNN7EXAMPLE` | AWS Console → Account name → Security credentials → Create access key |
-| `AWS_SECRET_ACCESS_KEY` | `wJalrXUtnFEMI/...` | Same page — shown once, download CSV immediately |
-| `AWS_REGION` | `us-east-1` | Must be `us-east-1` — Nova Lite only available here |
-
----
-
-## 🎬 Demo
-
-### Dashboard Panels
-
-| Panel | Question It Answers |
-|-------|-------------------|
-| Security Posture Score | Are we secure right now? |
-| Findings by Severity | What type of problems do we have? |
-| Cost Waste | How much money are we wasting and on what? |
-| Risk Drift Over Time | Is our security getting better or worse? |
-| AI Copilot Chat | What should I do about it? |
-
-### Suggested Copilot Queries
-
-```
-"What should I fix first?"
-"What are my biggest security risks?"
-"How much money am I wasting?"
-"Is my security posture getting better or worse?"
-"Show me all critical findings"
-"Which resource type has the most problems?"
-```
-
----
-
-## 🔧 Troubleshooting
-
-| Error | Cause | Fix |
-|-------|-------|-----|
-| `ValueError: URL must include scheme, host, port` | `ES_HOST` missing `:443` | Add `:443` to end of ES_HOST |
-| `Could not connect to Elasticsearch` | Wrong ES_HOST or API key | Verify ES_HOST uses `.es.` subdomain not `.kb.` |
-| `Unable to locate credentials` | AWS keys missing | Add `AWS_ACCESS_KEY_ID` + `SECRET` to `.env` |
-| `ModuleNotFoundError: No module named 'api'` | Running from wrong directory | `cd backend` first, then `uvicorn main:app` |
-| `CORS Error in browser` | Frontend can't reach API | Check `allow_origins` in `main.py` |
-| Empty dashboard after launch | Bootstrap not run | Run `python bootstrap.py` from `backend/` |
-| `AccessDeniedException` from Nova | Nova not enabled in Bedrock | Bedrock → Model catalog → Nova Lite → Enable |
-
----
-
-## ✅ Submission Checklist
-
-- [ ] `data/generator.py` — 290 resources with injected misconfigs
-- [ ] `engine/rules.py` — 15 rules with documented thresholds + business impact
-- [ ] `engine/scorer.py` — Composite scoring formula with tier classification
-- [ ] `elastic/` — 3 ES indices + 6 ES|QL queries answering business questions
-- [ ] `agent/copilot.py` — Nova 2 Lite multi-step tool-chaining agent
-- [ ] `frontend/` — React dashboard with 4 panels + copilot chat
-- [ ] Architecture diagram
-- [ ] 3-minute demo video
-- [ ] Public GitHub repo with MIT license
-- [ ] Social post tagging `@elastic_devs` and `@AWSCloud`
-- [ ] Blog post on builder.aws.com (Amazon Nova bonus prize)
-
----
-
-## 📄 License
-
-MIT License — see [LICENSE](LICENSE) for details.
-
----
-[🔗 Frontend Repository](https://github.com/Mustafa11300/CloudGaurd-F)
+<p align="center">
+  <sub>Built by <a href="https://github.com/Mustafa11300">Mustafa Hussain</a> · © 2026 CloudGuard AI</sub>
+</p>
