@@ -25,8 +25,9 @@ export function useSovereignStream() {
   const backoffResetTimeoutRef = useRef(null);
   const reconnectAttemptsRef = useRef(0);
   const manualCloseRef = useRef(false);
-  
-  const stateQueueRef = useRef({
+
+  // ── Batch accumulator (uses a simple timer instead of rAF) ─────────────
+  const pendingRef = useRef({
     events: [],
     amberAlerts: [],
     negotiations: [],
@@ -36,67 +37,75 @@ export function useSovereignStream() {
     wC: null,
     backoff: null,
   });
-  const rafRef = useRef(null);
+  const flushTimerRef = useRef(null);
 
-  const processQueue = useCallback(() => {
-    const queue = stateQueueRef.current;
-    
-    if (queue.events.length > 0) {
-      setEvents(prev => [...prev, ...queue.events].slice(-MAX_EVENTS));
-      queue.events = [];
+  const flushPending = useCallback(() => {
+    flushTimerRef.current = null;
+    const p = pendingRef.current;
+
+    if (p.events.length > 0) {
+      const batch = p.events.splice(0);
+      setEvents(prev => {
+        const existingIds = new Set(prev.map(e => e.event_id).filter(Boolean));
+        const unique = batch.filter(e => !e.event_id || !existingIds.has(e.event_id));
+        return [...prev, ...unique].slice(-MAX_EVENTS);
+      });
     }
 
-    if (queue.amberAlerts.length > 0) {
-      setAmberAlerts(prev => [...prev, ...queue.amberAlerts].slice(-MAX_AMBER_ALERTS));
-      queue.amberAlerts = [];
+    if (p.amberAlerts.length > 0) {
+      const batch = p.amberAlerts.splice(0);
+      setAmberAlerts(prev => {
+        const existingIds = new Set(prev.map(e => e.event_id).filter(Boolean));
+        const unique = batch.filter(e => !e.event_id || !existingIds.has(e.event_id));
+        return [...prev, ...unique].slice(-MAX_AMBER_ALERTS);
+      });
     }
 
-    if (queue.negotiations.length > 0) {
-      setNegotiations(prev => [...prev, ...queue.negotiations].slice(-MAX_NEGOTIATIONS));
-      queue.negotiations = [];
+    if (p.negotiations.length > 0) {
+      const batch = p.negotiations.splice(0);
+      setNegotiations(prev => {
+        const existingIds = new Set(prev.map(e => e.event_id).filter(Boolean));
+        const unique = batch.filter(e => !e.event_id || !existingIds.has(e.event_id));
+        return [...prev, ...unique].slice(-MAX_NEGOTIATIONS);
+      });
     }
 
-    if (queue.topology) {
-      setTopology(queue.topology);
-      queue.topology = null;
+    if (p.topology) {
+      setTopology(p.topology);
+      p.topology = null;
     }
 
-    if (typeof queue.jScore === 'number') {
-      setJScore(queue.jScore);
-      queue.jScore = null;
+    if (typeof p.jScore === 'number') {
+      setJScore(p.jScore);
+      p.jScore = null;
     }
 
-    if (typeof queue.wR === 'number') {
-      setWr(queue.wR);
-      queue.wR = null;
+    if (typeof p.wR === 'number') {
+      setWr(p.wR);
+      p.wR = null;
     }
 
-    if (typeof queue.wC === 'number') {
-      setWc(queue.wC);
-      queue.wC = null;
+    if (typeof p.wC === 'number') {
+      setWc(p.wC);
+      p.wC = null;
     }
 
-    if (queue.backoff) {
-      setBackoffStatus(queue.backoff);
-
+    if (p.backoff) {
+      setBackoffStatus(p.backoff);
       clearTimeout(backoffResetTimeoutRef.current);
-      const resetInMs = Math.max((queue.backoff.retryAfterS || 5) * 1000, 1000);
+      const resetInMs = Math.max((p.backoff.retryAfterS || 5) * 1000, 1000);
       backoffResetTimeoutRef.current = setTimeout(() => {
         setBackoffStatus({ active: false, reason: '', retryAfterS: 0 });
       }, resetInMs);
-
-      queue.backoff = null;
+      p.backoff = null;
     }
-    
-    rafRef.current = null;
   }, []);
 
-  const queueUpdate = useCallback((mutator) => {
-    mutator(stateQueueRef.current);
-    if (!rafRef.current) {
-      rafRef.current = requestAnimationFrame(processQueue);
+  const scheduleFlush = useCallback(() => {
+    if (!flushTimerRef.current) {
+      flushTimerRef.current = setTimeout(flushPending, 50);
     }
-  }, [processQueue]);
+  }, [flushPending]);
 
   const ingestEvent = useCallback((data, includeInFeed = true) => {
     if (!data || typeof data !== 'object') return;
@@ -105,37 +114,38 @@ export function useSovereignStream() {
     if (!type || type === 'Heartbeat') return;
 
     const body = data.message_body || {};
+    const p = pendingRef.current;
 
-    queueUpdate((queue) => {
-      if (includeInFeed) {
-        queue.events.push(data);
-      }
+    if (includeInFeed) {
+      p.events.push(data);
+    }
 
-      if (typeof data.j_score === 'number') queue.jScore = data.j_score;
-      if (typeof data.w_R === 'number') queue.wR = data.w_R;
-      if (typeof data.w_C === 'number') queue.wC = data.w_C;
+    if (typeof data.j_score === 'number') p.jScore = data.j_score;
+    if (typeof data.w_R === 'number') p.wR = data.w_R;
+    if (typeof data.w_C === 'number') p.wC = data.w_C;
 
-      if (type === 'Negotiation' || type === 'NarrativeChunk' || type === 'TickerUpdate') {
-        queue.negotiations.push(data);
-      }
+    if (type === 'Negotiation' || type === 'NarrativeChunk' || type === 'TickerUpdate') {
+      p.negotiations.push(data);
+    }
 
-      if (type === 'ForecastSignal' && body.type === 'Amber_Alert') {
-        queue.amberAlerts.push(data);
-      }
+    if (type === 'ForecastSignal' && body.type === 'Amber_Alert') {
+      p.amberAlerts.push(data);
+    }
 
-      if (type === 'TopologySync' && Array.isArray(body.resources)) {
-        queue.topology = body.resources;
-      }
+    if (type === 'TopologySync' && Array.isArray(body.resources)) {
+      p.topology = body.resources;
+    }
 
-      if (type === 'SwarmCoolingDown') {
-        queue.backoff = {
-          active: true,
-          reason: body.reason || 'Swarm cooling down',
-          retryAfterS: Number(body.retry_after_s || 5),
-        };
-      }
-    });
-  }, [queueUpdate]);
+    if (type === 'SwarmCoolingDown') {
+      p.backoff = {
+        active: true,
+        reason: body.reason || 'Swarm cooling down',
+        retryAfterS: Number(body.retry_after_s || 5),
+      };
+    }
+
+    scheduleFlush();
+  }, [scheduleFlush]);
 
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN || wsRef.current?.readyState === WebSocket.CONNECTING) {
@@ -214,9 +224,7 @@ export function useSovereignStream() {
       clearTimeout(reconnectTimeoutRef.current);
       clearInterval(pingIntervalRef.current);
       clearTimeout(backoffResetTimeoutRef.current);
-      if (rafRef.current) {
-        cancelAnimationFrame(rafRef.current);
-      }
+      clearTimeout(flushTimerRef.current);
     };
   }, [connect]);
 

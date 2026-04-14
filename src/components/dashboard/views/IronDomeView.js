@@ -98,7 +98,7 @@ export default function IronDomeView() {
         <div className="absolute inset-0 bg-[radial-gradient(#94a3b8_1px,transparent_1px)] [background-size:24px_24px] opacity-20"></div>
         
         <div className="relative z-10 flex flex-col h-full w-full">
-           <div className="mb-8 p-3 bg-white border border-slate-200 rounded-xl shadow-[0_2px_10px_rgb(0,0,0,0.03)] w-max text-[11px] font-bold text-slate-600 flex gap-6">
+           <div className="mb-3 p-3 bg-white border border-slate-200 rounded-xl shadow-[0_2px_10px_rgb(0,0,0,0.03)] w-max text-[11px] font-bold text-slate-600 flex gap-6">
              <span className="flex items-center gap-2"><div className="w-3 h-3 bg-slate-50 border border-slate-300 rounded"></div> Standard Node</span>
              <span className="flex items-center gap-2"><div className="w-3 h-3 bg-blue-100 border border-blue-400 rounded animate-pulse"></div> Parallel Reflex (Remediating)</span>
              <span className="flex items-center gap-2"><div className="w-3 h-3 bg-amber-100 border border-amber-400 rounded"></div> CISO Override</span>
@@ -112,9 +112,9 @@ export default function IronDomeView() {
            </div>
 
            <motion.div 
-             animate={is3D ? { rotateX: 45, rotateZ: -10, rotateY: -10, scale: 0.85 } : { rotateX: 0, rotateZ: 0, rotateY: 0, scale: 1 }}
+             animate={is3D ? { rotateX: 40, rotateZ: -8, rotateY: -8, scale: 0.9 } : { rotateX: 0, rotateZ: 0, rotateY: 0, scale: 1 }}
              transition={{ duration: 0.8, ease: "easeInOut" }}
-             className={`flex-1 w-full flex flex-col gap-2 items-center justify-center overflow-visible py-10 origin-center ${reflexBurst ? 'reflex-burst' : ''}`}
+             className={`flex-1 w-full flex flex-col gap-2 items-center justify-start overflow-visible pt-4 origin-center ${reflexBurst ? 'reflex-burst' : ''}`}
              style={{ transformStyle: "preserve-3d" }}
              onClick={() => setIs3D(!is3D)}
            >

@@ -169,8 +169,8 @@ export default function SovereignAuditLogs() {
              <AuditRow time="--:--:--" action="[EMPTY]" color="text-slate-600 bg-slate-50 border-slate-200" desc="No audit rows available yet." />
            )}
 
-           {rows.map((row) => (
-             <AuditRow key={row.id} time={row.time} action={row.action} color={row.color} desc={row.desc} />
+           {rows.map((row, idx) => (
+             <AuditRow key={`${row.id}-${idx}`} time={row.time} action={row.action} color={row.color} desc={row.desc} />
            ))}
 
            <div className="mt-8 flex items-center gap-2 pl-4 text-slate-400 font-mono font-bold max-w-max border border-slate-100 bg-slate-50 px-4 py-2 rounded-lg">

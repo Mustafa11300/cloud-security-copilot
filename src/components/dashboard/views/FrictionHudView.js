@@ -82,7 +82,7 @@ export default function FrictionHudView() {
                 </div>
               )}
 
-              {traceEvents.map((event) => {
+              {traceEvents.map((event, idx) => {
                 const body = event.message_body || {};
                 const timestamp = String(event.tick_timestamp || '').split('T')[1]?.replace('Z', '') || '--:--:--';
 
@@ -105,7 +105,7 @@ export default function FrictionHudView() {
 
                 return (
                   <NegotiationLog
-                    key={event.event_id}
+                    key={`${event.event_id || 'ev'}-${idx}`}
                     timestamp={timestamp.slice(0, 12)}
                     controller={controllerText}
                     ciso={cisoText}
@@ -117,37 +117,37 @@ export default function FrictionHudView() {
            </div>
         </div>
 
-        <div className="flex-[1] bg-gradient-to-b from-white/90 to-rose-50/50 rounded-[20px] shadow-sm border border-rose-100 p-6 flex flex-col items-center justify-center text-center relative overflow-hidden">
-          <div className="absolute inset-0 opacity-[0.2]" style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent, transparent 10px, #fecdd3 10px, #fecdd3 20px)" }}></div>
+        <div className="flex-[1] bg-gradient-to-b from-white/90 to-rose-50/50 rounded-[20px] shadow-sm border border-rose-100 p-5 flex flex-col items-center text-center relative overflow-y-auto scrollbar-hide">
+          <div className="absolute inset-0 opacity-[0.06]" style={{ backgroundImage: "radial-gradient(circle, #e11d48 1px, transparent 1px)", backgroundSize: "20px 20px" }}></div>
           
-          <div className="relative z-10 w-full">
-            <h3 className="text-rose-600 font-bold text-[12px] uppercase tracking-widest mb-6 drop-shadow-sm">Predictive Fast-Pass Trigger</h3>
+          <div className="relative z-10 w-full flex flex-col items-center">
+            <h3 className="text-rose-600 font-bold text-[12px] uppercase tracking-widest mb-4 drop-shadow-sm">Predictive Fast-Pass Trigger</h3>
             
-            <div className="bg-white border-[4px] border-rose-200 rounded-full w-44 h-44 mx-auto flex items-center justify-center shadow-[0_10px_30px_rgba(244,63,94,0.15)] relative flex-col">
-               <span className="text-[64px] font-bold text-slate-800 leading-none font-mono tracking-tighter">
+            <div className="bg-white border-[4px] border-rose-200 rounded-full w-32 h-32 flex items-center justify-center shadow-[0_10px_30px_rgba(244,63,94,0.15)] flex-col shrink-0">
+               <span className="text-[48px] font-bold text-slate-800 leading-none font-mono tracking-tighter">
                  {countdownValue}
                </span>
-               <span className="text-[10px] text-rose-500 font-bold mt-2 uppercase tracking-wider">SEC TO AUTO-KILL</span>
+               <span className="text-[9px] text-rose-500 font-bold mt-1 uppercase tracking-wider">SEC TO AUTO-KILL</span>
             </div>
 
-            <div className="mt-8 bg-white/90 backdrop-blur-sm p-5 rounded-[16px] border border-rose-200 shadow-sm">
-              <div className="text-[14px] font-bold text-slate-800 mb-1 flex justify-center items-center gap-1.5"><ShieldAlert size={14} className="text-rose-500"/> {isArmed ? 'Fast-Pass Armed' : 'Awaiting Trigger'}</div>
+            <div className="mt-5 bg-white/90 backdrop-blur-sm p-4 rounded-[16px] border border-rose-200 shadow-sm w-full">
+              <div className="text-[13px] font-bold text-slate-800 mb-1 flex justify-center items-center gap-1.5"><ShieldAlert size={14} className="text-rose-500"/> {isArmed ? 'Fast-Pass Armed' : 'Awaiting Trigger'}</div>
               <div className="text-[11px] text-slate-500 font-jetbrains font-medium">Target: {threatInfo?.resource_id || threatInfo?.target || 'n/a'}</div>
               <div className="text-[11px] text-slate-500 font-jetbrains font-medium mt-1">Window: {isArmed ? `${secondsRemaining}s` : '60s default'}</div>
-              <div className="text-[13px] text-emerald-600 font-bold mt-3 border-t border-slate-100 pt-3">
+              <div className="text-[12px] text-emerald-600 font-bold mt-2 border-t border-slate-100 pt-2">
                 Estimated Savings: $250 per fast-pass
               </div>
 
               <button
                 onClick={() => triggerVeto('Manual veto from Friction HUD')}
                 disabled={!isArmed}
-                className={`mt-4 w-full py-2 rounded-lg text-[11px] font-bold border transition-colors ${isArmed ? 'bg-rose-500 text-white border-rose-500 hover:bg-rose-600' : 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'}`}
+                className={`mt-3 w-full py-2 rounded-lg text-[11px] font-bold border transition-colors ${isArmed ? 'bg-rose-500 text-white border-rose-500 hover:bg-rose-600' : 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'}`}
               >
                 Trigger Veto
               </button>
             </div>
 
-            <div className="mt-4 min-h-[56px]">
+            <div className="mt-3 min-h-[40px] w-full">
               <AnimatePresence>
                 {dissipatedSignals.map((signal) => (
                   <motion.div

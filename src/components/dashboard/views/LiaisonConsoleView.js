@@ -77,13 +77,13 @@ export default function LiaisonConsoleView() {
                   </div>
                 )}
 
-                {explainabilityFeed.map((event) => {
+                {explainabilityFeed.map((event, idx) => {
                   const body = event.message_body || {};
                   const label = chunkLabel(body.chunk_type);
                   const timestamp = String(event.tick_timestamp || '').split('T')[1]?.replace('Z', '') || '--:--:--';
 
                   return (
-                    <div key={event.event_id} className="flex flex-col gap-2">
+                    <div key={`${event.event_id || 'ev'}-${idx}`} className="flex flex-col gap-2">
                       <div className="text-[10px] font-jetbrains text-blue-500 font-bold tracking-widest uppercase">
                         [{timestamp.slice(0, 8)}] {label}
                       </div>

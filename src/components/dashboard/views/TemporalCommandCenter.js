@@ -49,18 +49,46 @@ function eventToLog(entry) {
 
 export default function TemporalCommandCenter({ onCopilotClick }) {
   const [activeTab, setActiveTab] = useState('Tick');
+  const [syncing, setSyncing] = useState(false);
   const { isConnected, events, amberAlerts, topology, backoffStatus, jScore } = useSovereignStream();
-  const { metrics } = useMetricData();
+  const { metrics, refetch } = useMetricData();
+
+  const handleSync = async () => {
+    if (syncing) return;
+    setSyncing(true);
+    await refetch();
+    setTimeout(() => setSyncing(false), 800);
+  };
 
   const forecastSignals = useMemo(
     () => events.filter((event) => event.event_type === 'ForecastSignal').slice(-5),
     [events],
   );
 
+  const pastEvents = useMemo(() => {
+    return events
+      .filter(e => e.event_type !== 'Heartbeat' && e.event_type !== 'TopologySync')
+      .slice(-3)
+      .reverse()
+      .map(e => {
+        const body = e.message_body || {};
+        const typeLabel = e.event_type === 'Remediation' ? 'FIXED'
+          : e.event_type === 'ForecastSignal' ? (body.type || 'FORECAST')
+          : e.event_type === 'NarrativeChunk' ? (body.chunk_type || 'NARR').toUpperCase()
+          : e.event_type.toUpperCase().slice(0, 8);
+        const target = body.resource_id || body.target || body.heading || '—';
+        const isAmber = e.event_type === 'ForecastSignal' && body.type === 'Amber_Alert';
+        const isFixed = e.event_type === 'Remediation';
+        return { typeLabel, target, isAmber, isFixed };
+      });
+  }, [events]);
+
   const remediations = useMemo(
-    () => events.filter((event) => event.event_type === 'Remediation').slice(-6).reverse(),
+    () => events.filter((event) => event.event_type === 'Remediation').slice(-4).reverse(),
     [events],
   );
+
+
 
   const logItems = useMemo(
     () => events.slice(-10).reverse().map(eventToLog),
@@ -102,8 +130,15 @@ export default function TemporalCommandCenter({ onCopilotClick }) {
             </h1>
           </div>
           <div className="flex items-center gap-3 bg-white/60 backdrop-blur-md rounded-full p-1 shadow-sm border border-white">
-            <button className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-full text-[11px] font-semibold transition-colors shadow-sm ml-0.5">
-              <Zap size={12} className="text-white" /> T-Minus Sync
+            <button
+              onClick={handleSync}
+              disabled={syncing}
+              className={`flex items-center gap-1.5 text-white px-4 py-1.5 rounded-full text-[11px] font-semibold transition-all shadow-sm ml-0.5 ${
+                syncing ? 'bg-blue-400 scale-95' : 'bg-blue-600 hover:bg-blue-700'
+              }`}
+            >
+              <Zap size={12} className={`text-white ${syncing ? 'animate-spin' : ''}`} />
+              {syncing ? 'Syncing…' : 'T-Minus Sync'}
             </button>
             <span className={`px-3 py-1 text-[10px] font-bold rounded-full border ${isConnected ? 'text-emerald-700 border-emerald-200 bg-emerald-50' : 'text-slate-500 border-slate-200 bg-slate-50'}`}>
               {isConnected ? 'WS Connected' : 'WS Reconnecting'}
@@ -135,9 +170,9 @@ export default function TemporalCommandCenter({ onCopilotClick }) {
         </div>
 
         {/* Middle Row */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 flex-1 min-h-0">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 flex-1 min-h-[280px]">
           
-          <div className="md:col-span-2 bg-white/70 backdrop-blur-xl rounded-[20px] p-4 shadow-sm border border-white flex flex-col h-full overflow-hidden">
+          <div className="md:col-span-2 bg-white/70 backdrop-blur-xl rounded-[20px] p-4 shadow-sm border border-white flex flex-col h-full overflow-hidden min-h-[260px]">
              <div className="flex justify-between items-start mb-3 shrink-0">
               <div>
                 <h3 className="text-[13px] font-bold text-slate-800">Temporal Risk Horizon</h3>
@@ -152,10 +187,29 @@ export default function TemporalCommandCenter({ onCopilotClick }) {
             </div>
             
             <div className="flex-1 w-full min-h-0 relative mt-2 bg-blue-50/50 rounded-[16px] overflow-hidden flex border border-blue-100/50 shadow-inner">
-                <div className="w-[30%] h-full border-r border-blue-200 border-dashed flex flex-col justify-center items-end pr-6 gap-6 relative">
-                    <div className="absolute top-4 right-4 text-[10px] font-bold text-blue-500 uppercase tracking-widest bg-white py-1 px-3 rounded shadow-sm border border-blue-100">Past Events</div>
-                    <div className="flex items-center gap-2 opacity-60"><div className="w-4 h-4 rounded-full bg-blue-300"></div><div className="h-0.5 w-16 bg-blue-200"></div></div>
-                    <div className="flex items-center gap-2 opacity-40"><div className="w-4 h-4 rounded-full bg-blue-300"></div><div className="h-0.5 w-24 bg-blue-200"></div></div>
+                <div className="w-[30%] h-full border-r border-blue-200 border-dashed flex flex-col justify-center items-end pr-4 pl-2 gap-3 relative">
+                    <div className="absolute top-4 right-3 text-[10px] font-bold text-blue-500 uppercase tracking-widest bg-white py-1 px-3 rounded shadow-sm border border-blue-100">Past Events</div>
+                    {pastEvents.length === 0 && (
+                      <>
+                        <div className="flex items-center gap-2 opacity-40"><div className="w-3 h-3 rounded-full bg-blue-300"></div><div className="h-0.5 w-12 bg-blue-200"></div></div>
+                        <div className="flex items-center gap-2 opacity-25"><div className="w-3 h-3 rounded-full bg-blue-300"></div><div className="h-0.5 w-16 bg-blue-200"></div></div>
+                      </>
+                    )}
+                    {pastEvents.map((ev, idx) => (
+                      <div key={idx} className={`flex items-center gap-2 w-full justify-end ${idx === 0 ? 'opacity-100' : idx === 1 ? 'opacity-60' : 'opacity-35'}`}>
+                        <div className="flex flex-col items-end min-w-0">
+                          <span className={`text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border ${
+                            ev.isAmber ? 'text-amber-700 bg-amber-50 border-amber-200'
+                            : ev.isFixed ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                            : 'text-blue-600 bg-blue-50 border-blue-200'
+                          }`}>{ev.typeLabel}</span>
+                          <span className="text-[9px] text-slate-400 font-mono truncate max-w-[80px] mt-0.5">{ev.target}</span>
+                        </div>
+                        <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                          ev.isAmber ? 'bg-amber-400' : ev.isFixed ? 'bg-emerald-400' : 'bg-blue-400'
+                        }`}></div>
+                      </div>
+                    ))}
                 </div>
                 
                 <div className="w-[40%] h-full flex flex-col justify-center items-center relative z-10">
@@ -177,8 +231,8 @@ export default function TemporalCommandCenter({ onCopilotClick }) {
                     </div>
                 </div>
                 
-                <div className="w-[30%] h-full bg-gradient-to-r from-blue-50 to-blue-100 flex flex-col justify-center items-start pl-6 gap-4 relative overflow-hidden border-l border-blue-200">
-                    <div className="absolute top-4 left-4 text-[10px] uppercase font-bold text-blue-600 flex items-center gap-1.5"><AlertTriangle size={12}/> Forecast Horizon</div>
+                <div className="w-[30%] h-full bg-gradient-to-r from-blue-50 to-blue-100 flex flex-col items-start pt-12 pb-4 pl-5 pr-3 gap-2.5 relative overflow-y-auto overflow-x-hidden border-l border-blue-200 scrollbar-hide">
+                    <div className="absolute top-4 left-4 text-[10px] uppercase font-bold text-blue-600 flex items-center gap-1.5 z-10"><AlertTriangle size={12}/> Forecast Horizon</div>
 
                     {forecastSignals.length === 0 && (
                       <div className="bg-white/80 text-blue-600 text-[10px] font-bold px-3 py-1.5 rounded-full border border-blue-100">
@@ -186,15 +240,15 @@ export default function TemporalCommandCenter({ onCopilotClick }) {
                       </div>
                     )}
 
-                    {forecastSignals.map((signal) => {
+                    {forecastSignals.map((signal, idx) => {
                       const body = signal.message_body || {};
                       const isAmber = body.type === 'Amber_Alert';
                       return (
                         <motion.div
-                          key={signal.event_id || `${body.target}-${body.type}`}
+                          key={`${signal.event_id || 'sig'}-${idx}`}
                           initial={{ x: 20, opacity: 0 }}
                           animate={{ x: 0, opacity: 1 }}
-                          className={`text-[10px] font-bold px-3 py-1.5 rounded-full shadow-sm border flex items-center gap-2 ${isAmber ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-blue-500 text-white border-blue-500'}`}
+                          className={`text-[10px] font-bold px-3 py-1.5 rounded-full shadow-sm border flex items-center gap-2 shrink-0 ${isAmber ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-blue-500 text-white border-blue-500'}`}
                         >
                           <div className={`w-2 h-2 rounded-full ${isAmber ? 'bg-amber-400 animate-pulse' : 'bg-blue-200'}`}></div>
                           {body.type || 'Forecast'} {typeof body.probability === 'number' ? `P=${(body.probability * 100).toFixed(0)}%` : ''}
@@ -202,15 +256,18 @@ export default function TemporalCommandCenter({ onCopilotClick }) {
                       );
                     })}
 
-                    {amberAlerts.slice(-2).map((signal, index) => (
-                      <div
-                        key={`ghost-${signal.event_id}`}
-                        className="absolute right-2 text-[9px] px-2 py-1 rounded-full bg-amber-200/70 border border-amber-300 text-amber-800"
-                        style={{ bottom: `${20 + index * 24}%` }}
-                      >
-                        Ghost Node
+                    {amberAlerts.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-auto pt-2 border-t border-blue-200/50 w-full">
+                        {amberAlerts.slice(-2).map((signal, idx) => (
+                          <div
+                            key={`ghost-${signal.event_id || idx}-${idx}`}
+                            className="text-[9px] px-2 py-1 rounded-full bg-amber-200/70 border border-amber-300 text-amber-800 shrink-0"
+                          >
+                            Ghost Node
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    )}
                 </div>
             </div>
           </div>
@@ -252,22 +309,22 @@ export default function TemporalCommandCenter({ onCopilotClick }) {
           </motion.div>
         </div>
 
-        <div className="bg-white/70 backdrop-blur-xl rounded-[20px] p-4 shadow-sm border border-white flex flex-col shrink-0 min-h-[180px]">
+        <div className="bg-white/70 backdrop-blur-xl rounded-[20px] p-4 shadow-sm border border-white flex flex-col shrink-0 max-h-[200px]">
           <div className="mb-3 flex justify-between items-center shrink-0">
             <div>
               <h3 className="text-[13px] font-bold text-slate-800">Sovereign Remediations</h3>
             </div>
             <button className="text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-100 px-3 py-1.5 rounded-full hover:bg-blue-100 transition-colors">Historical Logs</button>
           </div>
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-x-8 gap-y-2 flex-1 overflow-auto scrollbar-hide content-start pr-1">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-2 flex-1 overflow-y-auto scrollbar-hide content-start pr-1">
             {remediations.length === 0 && (
               <RiskItem icon={<BookOpen size={14} className="text-blue-400" />} title="Awaiting Remediations" resource="No remediation events yet" tagVal="STANDBY" tagColor="bg-blue-50 text-blue-600 border border-blue-200 font-bold" />
             )}
-            {remediations.map((event) => {
+            {remediations.map((event, idx) => {
               const body = event.message_body || {};
               return (
                 <RiskItem
-                  key={event.event_id}
+                  key={`${event.event_id || 'rem'}-${idx}`}
                   icon={<Database size={14} className="text-blue-400" />}
                   title={body.action || 'Sovereign Remediation'}
                   resource={body.resource_id || 'unknown'}
