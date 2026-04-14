@@ -363,9 +363,6 @@ AWS_ACCESS_KEY_ID=your_aws_key
 AWS_SECRET_ACCESS_KEY=your_aws_secret
 AWS_REGION=us-east-1
 
-# Optional: Elasticsearch
-ES_HOST=your_elasticsearch_host
-ES_API_KEY=your_elasticsearch_api_key
 ```
 
 ### 5. Infrastructure (Optional)
