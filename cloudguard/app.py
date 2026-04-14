@@ -27,6 +27,7 @@ from cloudguard.api.routes import (
     math_router,
     branches_router,
     events_router,
+    test_router,
 )
 
 # Phase 3 War Room — WebSocket streaming engine
@@ -68,6 +69,7 @@ app.include_router(simulation_router)
 app.include_router(math_router)
 app.include_router(branches_router)
 app.include_router(events_router)
+app.include_router(test_router)
 
 # ── Phase 3 War Room (WebSocket) ──────────────────────────────────────────────
 app.include_router(war_room_router)
