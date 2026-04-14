@@ -106,7 +106,10 @@ class TemporalClock:
         self._burst_drift_id: Optional[str] = None
         self._pending_drifts: list[dict] = []
         self._drift_window_start: Optional[float] = None
-        self._lock = asyncio.Lock()
+        # Lazily create the asyncio lock inside the active event loop.
+        # This avoids RuntimeError when TemporalClock is instantiated from
+        # a worker thread that has no running loop.
+        self._lock: Optional[asyncio.Lock] = None
 
         # MTTR tracking
         self._mttr_start_tick: Optional[int] = None
@@ -323,6 +326,9 @@ class TemporalClock:
 
     async def _advance_tick(self) -> TickEvent:
         """Advance one tick and notify all callbacks (async)."""
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+
         async with self._lock:
             event = self._build_tick_event()
             self._tick += 1

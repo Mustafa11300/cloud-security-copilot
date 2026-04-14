@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Optional
 
 import numpy as np
 
@@ -533,3 +533,125 @@ class MathEngine:
           100% governed = J=0.0 (best)
         """
         return round((1.0 - max(0.0, min(1.0, j_score))) * 100, 2)
+
+    # ─── 7. Fuzzy Logic — Trapezoidal Membership Function ─────────────────────
+
+    @staticmethod
+    def trapezoidal_mf(x: float, a: float, b: float, c: float, d: float) -> float:
+        """
+        Trapezoidal Membership Function (TMF).
+
+        Produces a membership degree µ ∈ [0, 1] for value x:
+          µ = 0           if x ≤ a or x ≥ d
+          µ = (x-a)/(b-a) if a < x < b  (rising edge)
+          µ = 1           if b ≤ x ≤ c  (plateau)
+          µ = (d-x)/(d-c) if c < x < d  (falling edge)
+
+        Args:
+            x: Input value to fuzzify
+            a: Left foot (µ=0 boundary)
+            b: Left shoulder (µ=1 start)
+            c: Right shoulder (µ=1 end)
+            d: Right foot (µ=0 boundary)
+
+        Returns:
+            Membership degree µ in [0, 1]
+        """
+        if x <= a or x >= d:
+            return 0.0
+        elif a < x < b:
+            return (x - a) / (b - a) if (b - a) > 0 else 1.0
+        elif b <= x <= c:
+            return 1.0
+        elif c < x < d:
+            return (d - x) / (d - c) if (d - c) > 0 else 1.0
+        return 0.0
+
+    def fuzzy_risk_classification(self, risk_score: float) -> dict[str, float]:
+        """
+        Classify a risk score (0–100) into fuzzy risk categories using
+        overlapping trapezoidal membership functions.
+
+        Categories with their (a, b, c, d) parameters:
+          LOW:      (0,  0,  15, 35)
+          MEDIUM:   (20, 35, 50, 65)
+          HIGH:     (50, 65, 75, 85)
+          CRITICAL: (75, 85, 100, 100)
+
+        Returns:
+            Dict mapping category name → membership degree.
+            Sum of memberships may exceed 1.0 due to overlapping regions.
+        """
+        return {
+            "LOW":      self.trapezoidal_mf(risk_score, 0,  0,  15, 35),
+            "MEDIUM":   self.trapezoidal_mf(risk_score, 20, 35, 50, 65),
+            "HIGH":     self.trapezoidal_mf(risk_score, 50, 65, 75, 85),
+            "CRITICAL": self.trapezoidal_mf(risk_score, 75, 85, 100, 100),
+        }
+
+    def defuzzify_centroid(self, memberships: dict[str, float]) -> float:
+        """
+        Defuzzify using centroid method.
+        Maps each category to a representative value and computes
+        the weighted average.
+
+        Representative values:
+          LOW=10, MEDIUM=42, HIGH=70, CRITICAL=90
+
+        Returns:
+            Defuzzified crisp risk score.
+        """
+        centroids = {"LOW": 10.0, "MEDIUM": 42.0, "HIGH": 70.0, "CRITICAL": 90.0}
+        numerator = sum(memberships[k] * centroids[k] for k in memberships)
+        denominator = sum(memberships.values())
+        if denominator == 0:
+            return 0.0
+        return round(numerator / denominator, 4)
+
+    # ─── 8. Combined EWM-CRITIC Weighting ─────────────────────────────────────
+
+    def calculate_combined_weights(
+        self,
+        matrix: np.ndarray,
+        criterion_names: list[str],
+        alpha: float = 0.5,
+    ) -> dict[str, Any]:
+        """
+        Combine EWM (entropy) and CRITIC (correlation) weights.
+
+        The combined weight for each criterion j is:
+          w_combined_j = α · w_ewm_j + (1-α) · w_critic_j
+
+        Then normalized so Σ w_combined = 1.
+
+        Args:
+            matrix: (n_resources × n_criteria) performance matrix
+            criterion_names: List of criterion labels
+            alpha: Blending parameter (0.0 = pure CRITIC, 1.0 = pure EWM)
+
+        Returns:
+            Dict with combined_weights, ewm_weights, critic_weights, alpha.
+        """
+        if not 0.0 <= alpha <= 1.0:
+            raise ValueError(f"alpha must be in [0,1], got {alpha}")
+
+        ewm_result = self.calculate_ewm(matrix, criterion_names)
+        critic_result = self.calculate_critic(matrix, criterion_names)
+
+        combined = {}
+        for name in criterion_names:
+            w_e = ewm_result.weights.get(name, 0.0)
+            w_c = critic_result.weights.get(name, 0.0)
+            combined[name] = alpha * w_e + (1 - alpha) * w_c
+
+        # Normalize
+        total = sum(combined.values())
+        if total > 0:
+            combined = {k: round(v / total, 6) for k, v in combined.items()}
+
+        return {
+            "combined_weights": combined,
+            "ewm_weights": ewm_result.weights,
+            "critic_weights": critic_result.weights,
+            "alpha": alpha,
+        }

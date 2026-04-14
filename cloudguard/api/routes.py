@@ -363,3 +363,55 @@ def event_stats() -> dict:
     """Get event bus statistics."""
     engine = get_engine()
     return engine.event_bus.get_stats()
+
+
+# ── Test Injection Router ────────────────────────────────────────────────────
+test_router = APIRouter(prefix="/api/v2/test", tags=["Test Injection"])
+
+
+class InjectEventRequest(BaseModel):
+    """Payload for injecting a raw event into the War Room WebSocket stream."""
+    event_type: str = Field(..., description="e.g. DRIFT, REMEDIATION, FORECAST_SIGNAL, NARRATIVE_CHUNK")
+    data: dict = Field(default_factory=dict, description="Event data payload")
+    environment_weights: dict = Field(default_factory=dict, description="Optional w_R/w_C override")
+    event_id: str = Field(default="", description="Optional event ID (auto-generated if empty)")
+    agent_id: str = Field(default="test-harness", description="Agent that produced this event")
+
+
+@test_router.post("/inject")
+async def inject_event(req: InjectEventRequest) -> dict:
+    """
+    Inject a synthetic event into the War Room WebSocket stream.
+
+    This bypasses the simulation engine and broadcasts directly to all
+    connected frontend clients. Useful for testing specific UI scenarios
+    like Amber Alerts, Fast-Pass countdowns, and remediation triggers.
+    """
+    import uuid as _uuid
+    from cloudguard.api.streamer import emit_event, emit_ticker
+
+    raw_payload = {
+        "event_type": req.event_type,
+        "event_id": req.event_id or f"evt-test-{_uuid.uuid4().hex[:8]}",
+        "agent_id": req.agent_id,
+        "data": req.data,
+    }
+    if req.environment_weights:
+        raw_payload["environment_weights"] = req.environment_weights
+
+    await emit_event(raw_payload)
+
+    # If weights were provided, also emit a TICKER_UPDATE
+    if req.environment_weights:
+        await emit_ticker(
+            w_risk=req.environment_weights.get("w_R", 0.6),
+            w_cost=req.environment_weights.get("w_C", 0.4),
+            j_score=req.data.get("j_score", 0.5),
+            trigger=f"test_inject_{req.event_type}",
+        )
+
+    return {
+        "status": "injected",
+        "event_type": req.event_type,
+        "event_id": raw_payload["event_id"],
+    }
