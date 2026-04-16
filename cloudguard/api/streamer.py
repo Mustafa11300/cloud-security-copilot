@@ -93,6 +93,8 @@ _EVENT_TYPE_MAP: dict[str, str] = {
     "TOPOLOGY_SYNC":          "TopologySync",
     "SWARM_COOLING_DOWN":     "SwarmCoolingDown",
     "FORECAST_SIGNAL":        "ForecastSignal",
+    "NARRATIVE_CHUNK":        "NarrativeChunk",
+    "NarrativeChunk":         "NarrativeChunk",
     # Phase 4: Threat Horizon Overlay (attack path visualization)
     "THREAT_HORIZON_OVERLAY": "ThreatHorizonOverlay",
 }
@@ -232,6 +234,25 @@ def _build_ui_event(raw: dict[str, Any]) -> dict[str, Any]:
             f"🟠 ThreatHorizonOverlay: {data.get('alert_id')} — "
             f"{len(data.get('transitive_nodes', []))} attack-path nodes painted orange"
         )
+
+    elif raw_type in ("NARRATIVE_CHUNK", "NarrativeChunk"):
+        # Preserve the full NarrativeChunk structure for Friction HUD + Liaison Console
+        message_body = {
+            "chunk_type":        data.get("chunk_type", "narrative"),
+            "heading":           data.get("heading", ""),
+            "body":              data.get("body", ""),
+            "citation":          data.get("citation", ""),
+            "is_final":          data.get("is_final", False),
+            "countdown_active":  data.get("countdown_active", False),
+            "seconds_remaining": data.get("seconds_remaining", 0),
+            "j_before":          data.get("j_before", _j_score),
+            "j_after":           data.get("j_after", _j_score),
+            "j_delta":           data.get("j_delta", 0.0),
+            "roi_summary":       data.get("roi_summary"),
+            "math_trace":        data.get("math_trace"),
+            "is_fast_pass":      data.get("is_fast_pass", False),
+            "fast_pass_meta":    data.get("fast_pass_meta"),
+        }
 
     elif raw_type == "HEARTBEAT":
         message_body = {
@@ -461,12 +482,15 @@ async def _heartbeat_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    """Start broadcaster + heartbeat background tasks on app startup."""
+    """Start broadcaster + heartbeat + auto-stepper background tasks on app startup."""
+    from cloudguard.api.auto_stepper import run_auto_stepper
+
     tasks = [
         asyncio.create_task(_redis_broadcaster(REDIS_URL), name="redis_broadcaster"),
         asyncio.create_task(_heartbeat_loop(),              name="ws_heartbeat"),
+        asyncio.create_task(run_auto_stepper(),             name="auto_stepper"),
     ]
-    logger.info("🚀 War Room streaming engine started")
+    logger.info("🚀 War Room streaming engine started (with auto-stepper)")
     try:
         yield
     finally:
