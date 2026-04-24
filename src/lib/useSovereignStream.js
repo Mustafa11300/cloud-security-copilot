@@ -1,9 +1,23 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "wss://cloudgaurd-backend.onrender.com/ws/war-room";
+const HEALTH_URL = process.env.NEXT_PUBLIC_API_BASE || "https://cloudgaurd-backend.onrender.com";
 const MAX_EVENTS = 200;
 const MAX_AMBER_ALERTS = 50;
 const MAX_NEGOTIATIONS = 120;
+
+/**
+ * Wake up the Render free-tier backend with an HTTP ping before opening
+ * the WebSocket. Returns true if the backend is alive, false otherwise.
+ */
+async function wakeBackend() {
+  try {
+    const res = await fetch(`${HEALTH_URL}/`, { method: "GET", signal: AbortSignal.timeout(30000) });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
 
 export function useSovereignStream() {
   const [isConnected, setIsConnected] = useState(false);
@@ -147,8 +161,20 @@ export function useSovereignStream() {
     scheduleFlush();
   }, [scheduleFlush]);
 
-  const connect = useCallback(() => {
+  const connect = useCallback(async () => {
     if (wsRef.current?.readyState === WebSocket.OPEN || wsRef.current?.readyState === WebSocket.CONNECTING) {
+      return;
+    }
+
+    // Wake up the Render free-tier backend before attempting WebSocket upgrade.
+    // The HTTP request will trigger a cold start (~10-30s) if the service is asleep.
+    const isAlive = await wakeBackend();
+    if (!isAlive) {
+      // Backend is not responding — schedule a retry instead of opening a dead WS
+      const backoffMs = Math.min(3000 * Math.pow(2, reconnectAttemptsRef.current), 30000);
+      reconnectAttemptsRef.current++;
+      setLastError(new Error("Backend is waking up — retrying..."));
+      reconnectTimeoutRef.current = setTimeout(connect, backoffMs);
       return;
     }
     
@@ -196,8 +222,8 @@ export function useSovereignStream() {
           return;
         }
         
-        // Exponential backoff
-        const backoffMs = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 30000);
+        // Exponential backoff (min 3s for Render cold starts)
+        const backoffMs = Math.min(3000 * Math.pow(2, reconnectAttemptsRef.current), 30000);
         reconnectAttemptsRef.current++;
         
         reconnectTimeoutRef.current = setTimeout(connect, backoffMs);
