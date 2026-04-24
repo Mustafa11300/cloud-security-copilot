@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000/ws/war-room";
+const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "wss://cloudguard-backend.onrender.com/ws/war-room";
 const MAX_EVENTS = 200;
 const MAX_AMBER_ALERTS = 50;
 const MAX_NEGOTIATIONS = 120;
