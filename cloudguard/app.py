@@ -58,8 +58,13 @@ app = FastAPI(
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*", "https://cloudgaurd.vercel.app","https://cloud-security-copilot.vercel.app","https://cloud-security-copilot-9dsm.vercel.app"],
-    allow_credentials=False,
+    allow_origins=[
+        "*", 
+        "https://cloudgaurd.vercel.app",
+        "https://cloud-security-copilot.vercel.app",
+        "https://cloud-security-copilot-9dsm.vercel.app"
+        ],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
