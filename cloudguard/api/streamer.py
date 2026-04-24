@@ -58,7 +58,7 @@ from fastapi import APIRouter
 logger = logging.getLogger("cloudguard.war_room")
 
 # ─── Redis channel names ───────────────────────────────────────────────────────
-REDIS_URL        = os.getenv("REDIS_URL", "redis://localhost:6379")
+REDIS_URL        = os.getenv("REDIS_URL", "redis://default:uOnxudpatLQBllCvLmbzXIesXnmcTizm@redis.railway.internal:6379")
 CH_WORLD         = "cloudguard_events"   # Phase 1 world-state
 CH_KERNEL        = "kernel_traces"       # Phase 2 swarm reasoning traces
 
