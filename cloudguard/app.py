@@ -118,7 +118,8 @@ def health_v2():
             "war_room_streamer": True,
         },
         "war_room": {
-            "ws_endpoint": "ws://localhost:8000/ws/war-room",
+            # "ws_endpoint": "ws://localhost:8000/ws/war-room",
+            "ws_endpoint": "wss://cloudguard-backend.onrender.com/ws/war-room",
             "active_clients": len(CLIENTS),
             "buffer_events": len(EVENT_BUFFER),
             "topology_resources": len(TOPOLOGY),
