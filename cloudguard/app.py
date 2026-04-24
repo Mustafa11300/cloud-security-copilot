@@ -55,18 +55,21 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS
+# CORS — explicit origins required when allow_credentials=True
+# (wildcard "*" is NOT allowed with credentials)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "*", 
         "https://cloudgaurd.vercel.app",
         "https://cloud-security-copilot.vercel.app",
-        "https://cloud-security-copilot-9dsm.vercel.app"
-        ],
+        "https://cloud-security-copilot-9dsm.vercel.app",
+        "http://localhost:3000",
+        "http://localhost:5173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # ── Phase 1 Foundation Routes (v2) ───────────────────────────────────────────
