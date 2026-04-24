@@ -63,7 +63,8 @@ app.add_middleware(
         "https://cloudgaurd.vercel.app",
         "https://cloud-security-copilot.vercel.app",
         "https://cloud-security-copilot-9dsm.vercel.app",
-        "https://cloud-security-copilot-sooty.vercel.app/dashboard",
+        "https://cloud-security-copilot-sooty.vercel.app",
+        
         "http://localhost:3000",
         "http://localhost:5173",
     ],
