@@ -39,7 +39,7 @@ logger = logging.getLogger("cloudguard.forecaster.runner")
 
 REDIS_TRUTH_LOG_KEY      = os.getenv("REDIS_TRUTH_LOG_KEY", "cloudguard:truth_log")
 REDIS_CHANNEL            = os.getenv("REDIS_CHANNEL", "cloudguard_events")
-REDIS_URL                = os.getenv("REDIS_URL", "redis://default:uOnxudpatLQBllCvLmbzXIesXnmcTizm@redis.railway.internal:6379")
+REDIS_URL                = os.getenv("REDIS_URL", "redis://default:uOnxudpatLQBllCvLmbzXIesXnmcTizm@shuttle.proxy.rlwy.net:19059")
 TICK_INTERVAL_SECONDS    = float(os.getenv("FORECASTER_TICK_INTERVAL", "5"))
 SLIDING_WINDOW_SIZE      = 100
 
