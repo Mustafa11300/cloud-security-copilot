@@ -21,7 +21,7 @@
 
 const API_BASE =
   // process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
-  process.env.NEXT_PUBLIC_API_BASE || "https://cloudguard-backend.onrender.com";
+  process.env.NEXT_PUBLIC_API_BASE || "https://cloudgaurd-backend.onrender.com";
 
 // ── Sovereign Backoff State ────────────────────────────────────────────────
 let _backoffUntil = 0;     // timestamp (ms) until which we refuse requests
