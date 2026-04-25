@@ -5,7 +5,38 @@
 version: "3.9"
 
 services:
-  # ── PostgreSQL + TimescaleDB ────────────────────────────────────────────────
+  # ── Backend API ──────────────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: cloudguard_backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Frontend ─────────────────────────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        NEXT_PUBLIC_API_URL: http://backend:8000
+    container_name: cloudguard_frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # ── PostgreSQL + TimescaleDB ─────────────────────────────────
   postgres:
     image: timescale/timescaledb:latest-pg16
     container_name: cloudguard_postgres
@@ -24,7 +55,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # ── Redis ───────────────────────────────────────────────────────────────────
+  # ── Redis ────────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
     container_name: cloudguard_redis
