@@ -64,6 +64,7 @@ app.add_middleware(
         "https://cloud-security-copilot.vercel.app",
         "https://cloud-security-copilot-9dsm.vercel.app",
         "https://cloud-security-copilot-sooty.vercel.app",
+        "https://cloudguard-frontend-610264416759.us-central1.run.app",
         
         "http://localhost:3000",
         "http://localhost:5173",
@@ -129,7 +130,7 @@ def health_v2():
         },
         "war_room": {
             # "ws_endpoint": "ws://localhost:8000/ws/war-room",
-            "ws_endpoint": "wss://cloudgaurd-backend.onrender.com/ws/war-room",
+            "ws_endpoint": "wss://cloudguard-backend-610264416759.us-central1.run.app/ws/war-room",
             "active_clients": len(CLIENTS),
             "buffer_events": len(EVENT_BUFFER),
             "topology_resources": len(TOPOLOGY),

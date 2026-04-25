@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "wss://cloudgaurd-backend.onrender.com/ws/war-room";
-const HEALTH_URL = process.env.NEXT_PUBLIC_API_BASE || "https://cloudgaurd-backend.onrender.com";
+const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "wss://cloudguard-backend-610264416759.us-central1.run.app/ws/war-room";
+const HEALTH_URL = process.env.NEXT_PUBLIC_API_BASE || "https://cloudguard-backend-610264416759.us-central1.run.app";
 const MAX_EVENTS = 200;
 const MAX_AMBER_ALERTS = 50;
 const MAX_NEGOTIATIONS = 120;
